@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --turbopack)",
+      "Bash(rm -rf /c/Projects/geopolitical-tprm-frontend-temp)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(curl -s https://geopoliticaltprmbackend-production.up.railway.app/health)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(ls src/app/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(cd src/app/\\\\\\(dashboard\\\\\\))",
+      "Bash(mv assets:*)",
+      "Bash(mv risks:*)",
+      "Bash(mv mitigations:*)",
+      "Bash(mv agent:*)",
+      "Bash(curl -s -I -H \"Origin: http://localhost:3000\" https://geopoliticaltprmbackend-production.up.railway.app/health)",
+      "WebFetch(domain:geopoliticaltprmbackend-production.up.railway.app)",
+      "WebSearch",
+      "Bash(curl -s \"https://geopoliticaltprmbackend-production.up.railway.app/api/v1/risk-events?limit=2\")",
+      "Bash(curl -s \"https://geopoliticaltprmbackend-production.up.railway.app/api/v1/risk-events/active?limit=2\")",
+      "Bash(curl -s \"https://geopoliticaltprmbackend-production.up.railway.app/openapi.json\")",
+      "WebFetch(domain:docs.gdeltcloud.com)",
+      "Bash(xargs grep:*)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
