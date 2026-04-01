@@ -82,5 +82,12 @@ export const api = {
     agent: {
       trigger: () => request<unknown>(`/api/v1/companies/${companyId}/agent/trigger`, { method: "POST" }),
     },
+    connectors: {
+      list: () => request<unknown>(`/api/v1/companies/${companyId}/connectors`),
+      create: (data: unknown) => request<unknown>(`/api/v1/companies/${companyId}/connectors`, { method: "POST", body: JSON.stringify(data) }),
+      update: (connectorId: string, data: unknown) => request<unknown>(`/api/v1/companies/${companyId}/connectors/${connectorId}`, { method: "PATCH", body: JSON.stringify(data) }),
+      delete: (connectorId: string) => request<unknown>(`/api/v1/companies/${companyId}/connectors/${connectorId}`, { method: "DELETE" }),
+      sync: (connectorId: string) => request<unknown>(`/api/v1/companies/${companyId}/connectors/${connectorId}/sync`, { method: "POST" }),
+    },
   }),
 };

@@ -13,6 +13,7 @@ import {
   Bot,
   LogOut,
   Globe,
+  Settings,
 } from "lucide-react";
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/dashboard/supply-chain", label: "Supply Chain", icon: Network },
   { href: "/dashboard/mitigations", label: "Mitigations", icon: Shield },
   { href: "/dashboard/agent", label: "AI Agent", icon: Bot },
+  { href: "/dashboard/settings/connectors", label: "Connectors", icon: Settings },
 ];
 
 export function Sidebar() {

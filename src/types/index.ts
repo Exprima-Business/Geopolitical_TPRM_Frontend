@@ -73,6 +73,21 @@ export interface Mitigation {
   created_at: string;
 }
 
+export interface CloudConnector {
+  id: string;
+  company_id: string;
+  provider: string;
+  display_name: string;
+  is_enabled: boolean;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
+  sync_interval_minutes: number;
+  config: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Company {
   id: string;
   name: string;
