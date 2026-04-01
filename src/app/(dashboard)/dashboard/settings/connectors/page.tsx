@@ -12,6 +12,7 @@ import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, Cloud } from "l
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 const PROVIDERS = [
+  { value: "demo", label: "Demo (Sample Data)", icon: "Demo" },
   { value: "aws", label: "Amazon Web Services", icon: "AWS" },
   { value: "azure", label: "Microsoft Azure", icon: "Azure" },
   { value: "gcp", label: "Google Cloud Platform", icon: "GCP" },
@@ -24,8 +25,8 @@ export default function ConnectorsPage() {
   const [syncing, setSyncing] = useState<string | null>(null);
 
   // Form state
-  const [provider, setProvider] = useState("aws");
-  const [displayName, setDisplayName] = useState("");
+  const [provider, setProvider] = useState("demo");
+  const [displayName, setDisplayName] = useState("Demo Environment");
   const [credentialsJson, setCredentialsJson] = useState("");
   const [configJson, setConfigJson] = useState("");
   const [creating, setCreating] = useState(false);
@@ -99,6 +100,7 @@ export default function ConnectorsPage() {
   };
 
   const credentialPlaceholders: Record<string, string> = {
+    demo: '{"mode": "demo"}',
     aws: '{\n  "aws_access_key_id": "AKIA...",\n  "aws_secret_access_key": "..."\n}',
     azure: '{\n  "tenant_id": "...",\n  "client_id": "...",\n  "client_secret": "..."\n}',
     gcp: '{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}',

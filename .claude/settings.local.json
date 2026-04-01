@@ -36,7 +36,8 @@
       "Bash(curl -s -i -X OPTIONS \"https://geopoliticaltprmbackend-production.up.railway.app/api/v1/risk-events/active\" -H \"Origin: https://project-zz3lk.vercel.app/\" -H \"Access-Control-Request-Method: GET\")",
       "Bash(curl -s -i -X OPTIONS \"https://geopoliticaltprmbackend-production.up.railway.app/api/v1/risk-events/active\" -H \"Origin: https://project-zz3lk.vercel.app\" -H \"Access-Control-Request-Method: GET\")",
       "WebFetch(domain:docs.google.com)",
-      "WebFetch(domain:docs.cloud.google.com)"
+      "WebFetch(domain:docs.cloud.google.com)",
+      "Bash(python -c \"from cryptography.fernet import Fernet; print\\(Fernet.generate_key\\(\\).decode\\(\\)\\)\")"
     ]
   }
 }
