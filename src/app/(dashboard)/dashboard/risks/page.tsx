@@ -1,179 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EventDetailPanel } from "@/components/events/event-detail-panel";
 import { getSeverityLevel, getSeverityLabel, formatEventTitle, formatEventDescription } from "@/lib/risk-utils";
 import type { RiskEvent } from "@/types";
-import { Search, ExternalLink, X, Users, Globe, TrendingDown, Newspaper } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 
-const QUAD_CLASS_LABELS: Record<string, string> = {
-  "1": "Verbal Cooperation",
-  "2": "Material Cooperation",
-  "3": "Verbal Conflict",
-  "4": "Material Conflict",
+const SEVERITY_RANGES: Record<string, { min: string; max: string }> = {
+  critical: { min: "8", max: "10" },
+  high: { min: "6", max: "8" },
+  medium: { min: "4", max: "6" },
+  low: { min: "0", max: "4" },
 };
-
-function EventDetailPanel({ event, onClose }: { event: RiskEvent; onClose: () => void }) {
-  const raw = event.raw_data;
-  const severityLevel = getSeverityLevel(event.severity);
-
-  return (
-    <div className="fixed inset-y-0 right-0 w-[480px] bg-card border-l border-border shadow-2xl z-50 overflow-y-auto">
-      <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between">
-        <h2 className="font-semibold text-lg">Event Details</h2>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="p-6 space-y-6">
-        {/* Title + severity */}
-        <div className="space-y-2">
-          <div className="flex items-start gap-2">
-            <h3 className="text-xl font-bold leading-tight flex-1">{formatEventTitle(event)}</h3>
-            <Badge variant={severityLevel} className="shrink-0">
-              {getSeverityLabel(event.severity)}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">{event.description}</p>
-        </div>
-
-        {/* Source link */}
-        {raw?.source_url && (
-          <a
-            href={raw.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 p-3 rounded-lg border border-border bg-accent/50 hover:bg-accent transition-colors"
-          >
-            <Newspaper className="h-4 w-4 text-primary shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">Read Source Article</p>
-              <p className="text-xs text-muted-foreground truncate">{raw.source_url}</p>
-            </div>
-            <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
-          </a>
-        )}
-
-        {/* Actors */}
-        {(raw?.actor1_name || raw?.actor2_name) && (
-          <div className="space-y-3">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              <Users className="h-4 w-4" /> Actors Involved
-            </h4>
-            <div className="grid grid-cols-2 gap-3">
-              {raw?.actor1_name && (
-                <div className="p-3 rounded-lg border border-border">
-                  <p className="text-xs text-muted-foreground">Actor 1</p>
-                  <p className="font-medium">{raw.actor1_name}</p>
-                  {raw.actor1_country && <p className="text-xs text-muted-foreground">{raw.actor1_country}</p>}
-                </div>
-              )}
-              {raw?.actor2_name && (
-                <div className="p-3 rounded-lg border border-border">
-                  <p className="text-xs text-muted-foreground">Actor 2</p>
-                  <p className="font-medium">{raw.actor2_name}</p>
-                  {raw.actor2_country && <p className="text-xs text-muted-foreground">{raw.actor2_country}</p>}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Location */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold flex items-center gap-2">
-            <Globe className="h-4 w-4" /> Location
-          </h4>
-          <div className="p-3 rounded-lg border border-border">
-            {event.region && <p className="font-medium">{event.region}</p>}
-            {event.country_code && <p className="text-sm text-muted-foreground">Country: {event.country_code}</p>}
-            {event.latitude != null && event.longitude != null && (
-              <p className="text-xs text-muted-foreground">{event.latitude.toFixed(4)}, {event.longitude.toFixed(4)}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Metrics */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold flex items-center gap-2">
-            <TrendingDown className="h-4 w-4" /> Event Metrics
-          </h4>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg border border-border">
-              <p className="text-xs text-muted-foreground">Severity</p>
-              <p className="text-lg font-bold">{event.severity.toFixed(1)}<span className="text-sm font-normal text-muted-foreground">/10</span></p>
-            </div>
-            <div className="p-3 rounded-lg border border-border">
-              <p className="text-xs text-muted-foreground">Confidence</p>
-              <p className="text-lg font-bold">{Math.round(event.confidence * 100)}<span className="text-sm font-normal text-muted-foreground">%</span></p>
-            </div>
-            {raw?.goldstein_scale != null && (
-              <div className="p-3 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Goldstein Scale</p>
-                <p className={`text-lg font-bold ${raw.goldstein_scale < 0 ? "text-red-400" : "text-green-400"}`}>
-                  {raw.goldstein_scale > 0 ? "+" : ""}{raw.goldstein_scale.toFixed(1)}
-                </p>
-              </div>
-            )}
-            {raw?.num_mentions != null && (
-              <div className="p-3 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Media Mentions</p>
-                <p className="text-lg font-bold">{raw.num_mentions}</p>
-              </div>
-            )}
-            {raw?.avg_tone != null && (
-              <div className="p-3 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Media Tone</p>
-                <p className={`text-lg font-bold ${raw.avg_tone < 0 ? "text-red-400" : "text-green-400"}`}>
-                  {raw.avg_tone.toFixed(1)}
-                </p>
-              </div>
-            )}
-            {raw?.quad_class && (
-              <div className="p-3 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Event Class</p>
-                <p className="font-medium text-sm">{QUAD_CLASS_LABELS[raw.quad_class] || raw.quad_class}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Timestamps */}
-        <div className="space-y-1 text-sm text-muted-foreground border-t border-border pt-4">
-          {event.started_at && <p>Started: {new Date(event.started_at).toLocaleString()}</p>}
-          <p>Recorded: {new Date(event.created_at).toLocaleString()}</p>
-          {raw?.event_code && <p>CAMEO Code: {raw.event_code}</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function RisksPage() {
   const [events, setEvents] = useState<RiskEvent[]>([]);
-  const [search, setSearch] = useState("");
-  const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [selectedEvent, setSelectedEvent] = useState<RiskEvent | null>(null);
 
-  useEffect(() => {
-    api.riskEvents.list().then((data) => {
-      const result = data as { items?: RiskEvent[] } | RiskEvent[];
-      const items = Array.isArray(result) ? result : result.items || [];
-      setEvents(items);
-    }).catch(console.error);
-  }, []);
+  // Server-side filter state
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const filtered = events.filter((e) => {
-    const title = formatEventTitle(e).toLowerCase();
-    const matchesSearch = !search || title.includes(search.toLowerCase()) || e.region?.toLowerCase().includes(search.toLowerCase()) || e.category?.toLowerCase().includes(search.toLowerCase()) || e.raw_data?.actor1_name?.toLowerCase().includes(search.toLowerCase()) || e.raw_data?.actor2_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesSeverity = severityFilter === "all" || getSeverityLevel(e.severity) === severityFilter;
-    return matchesSearch && matchesSeverity;
-  });
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page on filter change
+  useEffect(() => { setPage(1); }, [severityFilter, categoryFilter, debouncedSearch]);
+
+  // Fetch events with server-side params
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, string> = {
+        page: String(page),
+        page_size: "20",
+      };
+      if (severityFilter !== "all") {
+        const range = SEVERITY_RANGES[severityFilter];
+        if (range) {
+          params.min_severity = range.min;
+          params.max_severity = range.max;
+        }
+      }
+      if (categoryFilter !== "all") params.category = categoryFilter;
+      if (debouncedSearch) params.search = debouncedSearch;
+
+      const data = await api.riskEvents.list(params);
+      const result = data as { items?: RiskEvent[]; total?: number; pages?: number; page?: number };
+
+      if (result.items) {
+        setEvents(result.items);
+        setTotal(result.total || 0);
+        setTotalPages(result.pages || 1);
+      } else if (Array.isArray(data)) {
+        setEvents(data as RiskEvent[]);
+        setTotal((data as RiskEvent[]).length);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  }, [page, severityFilter, categoryFilter, debouncedSearch]);
+
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
   return (
     <div className="p-6 space-y-6">
@@ -182,13 +88,14 @@ export default function RisksPage() {
         <p className="text-muted-foreground">GDELT-sourced geopolitical risk events — click any event for full details</p>
       </div>
 
+      {/* Filters */}
       <div className="flex gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by title, region, actor, or category..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by title, region, or actor..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -203,12 +110,30 @@ export default function RisksPage() {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+        >
+          <option value="all">All Categories</option>
+          <option value="military_conflict">Military Conflict</option>
+          <option value="civil_unrest">Civil Unrest</option>
+          <option value="economic_sanctions">Economic Sanctions</option>
+          <option value="cyber">Cyber</option>
+          <option value="weather">Weather</option>
+          <option value="pandemic_health">Pandemic / Health</option>
+          <option value="infrastructure_failure">Infrastructure Failure</option>
+        </select>
       </div>
 
-      <p className="text-sm text-muted-foreground">{filtered.length} events</p>
+      {/* Results count */}
+      <p className="text-sm text-muted-foreground">
+        {loading ? "Loading..." : `Showing ${events.length} of ${total} events`}
+      </p>
 
+      {/* Event list */}
       <div className="space-y-3">
-        {filtered.map((event) => (
+        {events.map((event) => (
           <Card
             key={event.id}
             className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -243,6 +168,31 @@ export default function RisksPage() {
           </Card>
         ))}
       </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" /> Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Detail panel */}
       {selectedEvent && (

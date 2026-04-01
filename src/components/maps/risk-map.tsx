@@ -29,7 +29,7 @@ const SEVERITY_RADII: Record<string, number> = {
 };
 
 export function RiskMap() {
-  const { viewState, setViewState, selectedEventId, setSelectedEventId } = useMapStore();
+  const { viewState, setViewState, selectedEventId, setSelectedEventId, severityFilter, eventTypeFilter } = useMapStore();
   const [events, setEvents] = useState<RiskEvent[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; event: MappedEvent } | null>(null);
 
@@ -39,7 +39,7 @@ export function RiskMap() {
     }).catch(console.error);
   }, []);
 
-  // Resolve coordinates for all events, filtering out those with no location
+  // Expose events for parent components
   const mappedEvents = useMemo(() => {
     return events
       .map((e) => {
@@ -50,10 +50,19 @@ export function RiskMap() {
       .filter((e): e is MappedEvent => e !== null);
   }, [events]);
 
+  // Apply store filters
+  const filteredEvents = useMemo(() => {
+    return mappedEvents.filter((e) => {
+      if (severityFilter.length > 0 && !severityFilter.includes(getSeverityLevel(e.severity))) return false;
+      if (eventTypeFilter.length > 0 && !eventTypeFilter.includes(e.category)) return false;
+      return true;
+    });
+  }, [mappedEvents, severityFilter, eventTypeFilter]);
+
   const layers = [
     new ScatterplotLayer<MappedEvent>({
       id: "risk-events",
-      data: mappedEvents,
+      data: filteredEvents,
       getPosition: (d) => d._coords,
       getRadius: (d) => SEVERITY_RADII[getSeverityLevel(d.severity)] || 30000,
       getFillColor: (d) => SEVERITY_COLORS[getSeverityLevel(d.severity)] || [128, 128, 128, 160],
@@ -68,6 +77,10 @@ export function RiskMap() {
       },
       onHover: ({ object, x, y }) => {
         setTooltip(object ? { x, y, event: object } : null);
+      },
+      updateTriggers: {
+        getFillColor: [severityFilter, eventTypeFilter],
+        getLineColor: [selectedEventId],
       },
     }),
   ];
@@ -121,3 +134,6 @@ export function RiskMap() {
     </div>
   );
 }
+
+// Export events for parent to use
+export { type MappedEvent };
