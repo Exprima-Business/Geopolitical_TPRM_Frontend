@@ -45,3 +45,15 @@ body {
 .maplibregl-popup-tip {
   border-top-color: var(--color-card) !important;
 }
+
+/* Native select/option dark theme fix */
+select,
+select option {
+  background-color: var(--color-card);
+  color: var(--color-foreground);
+}
+
+textarea {
+  background-color: var(--color-card);
+  color: var(--color-foreground);
+}
