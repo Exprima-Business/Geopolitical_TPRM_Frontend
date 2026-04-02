@@ -71,19 +71,6 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
   const [tooltip, setTooltip] = useState<{
     x: number; y: number; text: string; subtext: string; color: string;
   } | null>(null);
-  const [animationTime, setAnimationTime] = useState(0);
-
-  // Animation loop for arc flow effect
-  useEffect(() => {
-    let frame: number;
-    const animate = () => {
-      setAnimationTime((t) => (t + 1) % 1000);
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
   // Fetch data
   useEffect(() => {
     api.riskEvents.active().then((data) => setEvents(data as RiskEvent[])).catch(console.error);
@@ -218,13 +205,13 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
 
     // Layer 3: Risk events (circles with glow effect via double layer)
     result.push(
-      // Outer glow for critical events
+      // Outer glow for critical events (static, no animation — CSS pulse handles the visual effect)
       new ScatterplotLayer<MappedEvent>({
         id: "risk-events-glow",
         data: filteredEvents.filter((e) => e.severity >= 8),
         getPosition: (d) => d._coords,
         getRadius: (d) => (SEVERITY_RADII[getSeverityLevel(d.severity)] || 30000) * 1.8,
-        getFillColor: [239, 68, 68, 40 + Math.abs(Math.sin(animationTime * 0.05)) * 30],
+        getFillColor: [239, 68, 68, 50],
         radiusMinPixels: 10,
         radiusMaxPixels: 60,
       }),
@@ -301,7 +288,7 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
     return result;
   }, [
     filteredEvents, mappedAssets, proximityArcs, showArcs, showHeatmap,
-    selectedEventId, severityFilter, eventTypeFilter, animationTime, onAssetClick,
+    selectedEventId, severityFilter, eventTypeFilter, onAssetClick,
     setSelectedEventId,
   ]);
 
