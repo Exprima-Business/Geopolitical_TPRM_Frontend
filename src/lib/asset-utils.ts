@@ -45,14 +45,41 @@ export function getAssetLocation(asset: Asset): string {
   return "Location not set";
 }
 
-export function getAssetCoordinates(asset: Asset): [number, number] | null {
+/**
+ * Get coordinates for an asset, with deterministic jitter for assets
+ * sharing the same region so they fan out visually on the map.
+ *
+ * @param asset The asset
+ * @param index Optional index for jitter calculation (position in list)
+ * @param total Optional total assets at same location (for ring sizing)
+ */
+export function getAssetCoordinates(
+  asset: Asset,
+  index?: number,
+  total?: number
+): [number, number] | null {
+  let base: [number, number] | null = null;
+
   if (asset.latitude != null && asset.longitude != null) {
-    return [asset.longitude, asset.latitude];
+    base = [asset.longitude, asset.latitude];
+  } else if (asset.cloud_region_code && REGION_COORDS[asset.cloud_region_code]) {
+    base = [...REGION_COORDS[asset.cloud_region_code]];
   }
-  if (asset.cloud_region_code && REGION_COORDS[asset.cloud_region_code]) {
-    return REGION_COORDS[asset.cloud_region_code];
+
+  if (!base) return null;
+
+  // Apply jitter if index provided (for clustered assets at same region)
+  if (index !== undefined && total !== undefined && total > 1) {
+    const angle = (2 * Math.PI * index) / total;
+    // Spread radius scales with count — ~0.5° for small clusters, up to 1.5° for larger ones
+    const radius = 0.4 + Math.min(total * 0.08, 1.1);
+    base = [
+      base[0] + radius * Math.cos(angle),
+      base[1] + radius * Math.sin(angle),
+    ];
   }
-  return null;
+
+  return base;
 }
 
 export function getAssetTypeLabel(asset: Asset): string {

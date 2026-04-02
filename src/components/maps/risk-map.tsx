@@ -73,15 +73,26 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
       .filter((e): e is MappedEvent => e !== null);
   }, [events]);
 
-  // Map assets
+  // Map assets with jitter for same-region clustering
   const mappedAssets = useMemo(() => {
-    return assets
-      .map((a) => {
-        const coords = getAssetCoordinates(a);
-        if (!coords) return null;
-        return { ...a, _coords: coords } as MappedAsset;
-      })
-      .filter((a): a is MappedAsset => a !== null);
+    // Group by location key to compute per-group indices
+    const groups: Record<string, Asset[]> = {};
+    for (const a of assets) {
+      const key = a.cloud_region_code || a.address || a.id;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(a);
+    }
+
+    const result: MappedAsset[] = [];
+    for (const group of Object.values(groups)) {
+      for (let i = 0; i < group.length; i++) {
+        const coords = getAssetCoordinates(group[i], i, group.length);
+        if (coords) {
+          result.push({ ...group[i], _coords: coords });
+        }
+      }
+    }
+    return result;
   }, [assets]);
 
   // Apply store filters to events
