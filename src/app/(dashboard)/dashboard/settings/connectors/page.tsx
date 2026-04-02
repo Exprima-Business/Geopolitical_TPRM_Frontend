@@ -74,12 +74,21 @@ export default function ConnectorsPage() {
     setSyncing(connectorId);
     try {
       await api.companies(COMPANY_ID).connectors.sync(connectorId);
-      // Poll for completion after a short delay
-      setTimeout(loadConnectors, 3000);
+      // Poll for completion — sync typically takes 3-10 seconds
+      const poll = async (attempts: number) => {
+        await loadConnectors();
+        const updated = connectors.find((c) => c.id === connectorId);
+        if (attempts > 0 && updated?.last_sync_status === "running") {
+          setTimeout(() => poll(attempts - 1), 2000);
+        } else {
+          setSyncing(null);
+        }
+      };
+      setTimeout(() => poll(5), 2000);
     } catch (err) {
       console.error(err);
+      setSyncing(null);
     }
-    setSyncing(null);
   };
 
   const handleDelete = async (connectorId: string) => {

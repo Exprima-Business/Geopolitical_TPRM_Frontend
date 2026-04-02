@@ -22,7 +22,10 @@ export default function AssetsPage() {
 
   useEffect(() => {
     api.companies(COMPANY_ID).assets.list()
-      .then((data) => setAssets(data as Asset[]))
+      .then((data) => {
+        const result = data as { items?: Asset[] } | Asset[];
+        setAssets(Array.isArray(result) ? result : result.items || []);
+      })
       .catch(console.error);
   }, []);
 
@@ -37,7 +40,8 @@ export default function AssetsPage() {
         criticality,
       });
       const data = await api.companies(COMPANY_ID).assets.list();
-      setAssets(data as Asset[]);
+      const result = data as { items?: Asset[] } | Asset[];
+      setAssets(Array.isArray(result) ? result : result.items || []);
       setShowForm(false);
       setName("");
       setAddress("");
