@@ -37,6 +37,13 @@ export interface RiskEvent {
   created_at: string;
   updated_at: string;
   raw_data?: RiskEventRawData | null;
+  // Evolution tracking
+  status?: string | null;
+  previous_severity?: number | null;
+  update_count?: number | null;
+  severity_trend?: string | null;
+  first_seen_at?: string | null;
+  peak_severity?: number | null;
 }
 
 export interface Asset {

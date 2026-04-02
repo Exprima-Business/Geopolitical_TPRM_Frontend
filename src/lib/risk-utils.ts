@@ -18,6 +18,19 @@ export function haversineKm(
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+// --- Trend helpers ---
+
+export function getTrendIndicator(trend: string | null | undefined): { arrow: string; color: string; label: string } {
+  switch (trend) {
+    case "rising":
+      return { arrow: "↑", color: "text-red-400", label: "Escalating" };
+    case "falling":
+      return { arrow: "↓", color: "text-green-400", label: "De-escalating" };
+    default:
+      return { arrow: "→", color: "text-yellow-400", label: "Stable" };
+  }
+}
+
 // --- Severity helpers ---
 
 export type SeverityLevel = "critical" | "high" | "medium" | "low";

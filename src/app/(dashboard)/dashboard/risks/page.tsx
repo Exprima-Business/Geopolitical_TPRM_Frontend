@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EventDetailPanel } from "@/components/events/event-detail-panel";
-import { getSeverityLevel, getSeverityLabel, formatEventTitle, formatEventDescription } from "@/lib/risk-utils";
+import { getSeverityLevel, getSeverityLabel, formatEventTitle, formatEventDescription, getTrendIndicator } from "@/lib/risk-utils";
 import type { RiskEvent } from "@/types";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -143,6 +143,11 @@ export default function RisksPage() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium">{formatEventTitle(event)}</h3>
+                  {event.severity_trend && event.severity_trend !== "stable" && (
+                    <span className={`text-sm font-bold ${getTrendIndicator(event.severity_trend).color}`}>
+                      {getTrendIndicator(event.severity_trend).arrow}
+                    </span>
+                  )}
                   <Badge variant={getSeverityLevel(event.severity)}>
                     {getSeverityLabel(event.severity)}
                   </Badge>

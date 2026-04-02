@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getSeverityLevel, getSeverityLabel, formatEventTitle } from "@/lib/risk-utils";
+import { getSeverityLevel, getSeverityLabel, formatEventTitle, getTrendIndicator } from "@/lib/risk-utils";
 import type { RiskEvent } from "@/types";
 import { X, ExternalLink, Users, Globe, TrendingDown, Newspaper } from "lucide-react";
 
@@ -97,12 +97,29 @@ export function EventDetailPanel({ event, onClose }: { event: RiskEvent; onClose
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground">Severity</p>
-              <p className="text-lg font-bold">{event.severity.toFixed(1)}<span className="text-sm font-normal text-muted-foreground">/10</span></p>
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-bold">{event.severity.toFixed(1)}<span className="text-sm font-normal text-muted-foreground">/10</span></p>
+                {event.severity_trend && (
+                  <span className={`text-lg ${getTrendIndicator(event.severity_trend).color}`}>
+                    {getTrendIndicator(event.severity_trend).arrow}
+                  </span>
+                )}
+              </div>
+              {event.peak_severity != null && event.peak_severity > event.severity + 0.5 && (
+                <p className="text-xs text-muted-foreground">Peak: {event.peak_severity.toFixed(1)}</p>
+              )}
             </div>
             <div className="p-3 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground">Confidence</p>
               <p className="text-lg font-bold">{Math.round(event.confidence * 100)}<span className="text-sm font-normal text-muted-foreground">%</span></p>
             </div>
+            {event.update_count != null && event.update_count > 1 && (
+              <div className="p-3 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Updates</p>
+                <p className="text-lg font-bold">{event.update_count}x</p>
+                <p className="text-xs text-muted-foreground">{getTrendIndicator(event.severity_trend).label}</p>
+              </div>
+            )}
             {raw?.goldstein_scale != null && (
               <div className="p-3 rounded-lg border border-border">
                 <p className="text-xs text-muted-foreground">Goldstein Scale</p>
