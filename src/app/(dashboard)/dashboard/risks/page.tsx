@@ -121,6 +121,7 @@ export default function RisksPage() {
           <option value="economic_sanctions">Economic Sanctions</option>
           <option value="cyber">Cyber</option>
           <option value="weather">Weather</option>
+          <option value="natural_disaster">Natural Disaster</option>
           <option value="pandemic_health">Pandemic / Health</option>
           <option value="infrastructure_failure">Infrastructure Failure</option>
         </select>

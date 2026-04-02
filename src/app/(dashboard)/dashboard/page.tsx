@@ -22,6 +22,7 @@ const EVENT_CATEGORIES = [
   "economic_sanctions",
   "cyber",
   "weather",
+  "natural_disaster",
   "pandemic_health",
   "infrastructure_failure",
 ] as const;

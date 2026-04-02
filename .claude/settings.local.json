@@ -40,7 +40,8 @@
       "Bash(python -c \"from cryptography.fernet import Fernet; print\\(Fernet.generate_key\\(\\).decode\\(\\)\\)\")",
       "Bash(python -m json.tool)",
       "WebFetch(domain:www.youtube.com)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "WebFetch(domain:api-docs.ranenetwork.com)"
     ]
   }
 }
