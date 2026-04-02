@@ -7,10 +7,17 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import { useMapStore } from "@/stores/map-store";
 import { api } from "@/lib/api";
 import { getSeverityLevel, formatEventTitle, getSeverityLabel, getEventCoordinates } from "@/lib/risk-utils";
-import type { RiskEvent } from "@/types";
+import { getAssetCoordinates, getAssetIcon, getAssetTypeLabel, getAssetLocation } from "@/lib/asset-utils";
+import type { RiskEvent, Asset } from "@/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
+
 interface MappedEvent extends RiskEvent {
+  _coords: [number, number];
+}
+
+interface MappedAsset extends Asset {
   _coords: [number, number];
 }
 
@@ -28,18 +35,34 @@ const SEVERITY_RADII: Record<string, number> = {
   low: 25000,
 };
 
-export function RiskMap() {
+// Asset type colors — blue/cyan/teal palette, distinct from risk red/orange/yellow
+const ASSET_COLORS: Record<string, [number, number, number, number]> = {
+  office: [59, 130, 246, 220],         // blue
+  data_center: [16, 185, 129, 220],    // emerald
+  cloud_region: [99, 102, 241, 200],   // indigo
+  warehouse: [14, 165, 233, 200],      // sky
+  factory: [20, 184, 166, 200],        // teal
+  default: [139, 92, 246, 200],        // violet
+};
+
+export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => void }) {
   const { viewState, setViewState, selectedEventId, setSelectedEventId, severityFilter, eventTypeFilter } = useMapStore();
   const [events, setEvents] = useState<RiskEvent[]>([]);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; event: MappedEvent } | null>(null);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string; subtext: string; color: string } | null>(null);
 
   useEffect(() => {
     api.riskEvents.active().then((data) => {
       setEvents(data as RiskEvent[]);
     }).catch(console.error);
+
+    api.companies(COMPANY_ID).assets.list().then((data) => {
+      const result = data as { items?: Asset[] } | Asset[];
+      setAssets(Array.isArray(result) ? result : result.items || []);
+    }).catch(console.error);
   }, []);
 
-  // Expose events for parent components
+  // Map risk events
   const mappedEvents = useMemo(() => {
     return events
       .map((e) => {
@@ -50,7 +73,18 @@ export function RiskMap() {
       .filter((e): e is MappedEvent => e !== null);
   }, [events]);
 
-  // Apply store filters
+  // Map assets
+  const mappedAssets = useMemo(() => {
+    return assets
+      .map((a) => {
+        const coords = getAssetCoordinates(a);
+        if (!coords) return null;
+        return { ...a, _coords: coords } as MappedAsset;
+      })
+      .filter((a): a is MappedAsset => a !== null);
+  }, [assets]);
+
+  // Apply store filters to events
   const filteredEvents = useMemo(() => {
     return mappedEvents.filter((e) => {
       if (severityFilter.length > 0 && !severityFilter.includes(getSeverityLevel(e.severity))) return false;
@@ -60,6 +94,7 @@ export function RiskMap() {
   }, [mappedEvents, severityFilter, eventTypeFilter]);
 
   const layers = [
+    // Risk events layer (circles)
     new ScatterplotLayer<MappedEvent>({
       id: "risk-events",
       data: filteredEvents,
@@ -76,11 +111,52 @@ export function RiskMap() {
         if (object) setSelectedEventId(object.id);
       },
       onHover: ({ object, x, y }) => {
-        setTooltip(object ? { x, y, event: object } : null);
+        if (object) {
+          setTooltip({
+            x, y,
+            text: formatEventTitle(object),
+            subtext: `${getSeverityLabel(object.severity)} · ${object.severity.toFixed(1)}/10`,
+            color: getSeverityLevel(object.severity) === "critical" ? "text-red-400"
+              : getSeverityLevel(object.severity) === "high" ? "text-orange-400"
+              : getSeverityLevel(object.severity) === "medium" ? "text-yellow-400"
+              : "text-green-400",
+          });
+        } else {
+          setTooltip(null);
+        }
       },
       updateTriggers: {
         getFillColor: [severityFilter, eventTypeFilter],
         getLineColor: [selectedEventId],
+      },
+    }),
+    // Assets layer (smaller, diamond-shaped via stroked circles)
+    new ScatterplotLayer<MappedAsset>({
+      id: "assets",
+      data: mappedAssets,
+      getPosition: (d) => d._coords,
+      getRadius: 15000,
+      getFillColor: (d) => ASSET_COLORS[d.asset_type] || ASSET_COLORS.default,
+      getLineColor: [255, 255, 255, 200],
+      lineWidthMinPixels: 2,
+      stroked: true,
+      pickable: true,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 12,
+      onClick: ({ object }) => {
+        if (object && onAssetClick) onAssetClick(object);
+      },
+      onHover: ({ object, x, y }) => {
+        if (object) {
+          setTooltip({
+            x, y,
+            text: `${getAssetIcon(object)} ${object.name}`,
+            subtext: `${getAssetTypeLabel(object)} · ${getAssetLocation(object)}`,
+            color: "text-blue-400",
+          });
+        } else {
+          setTooltip(null);
+        }
       },
     }),
   ];
@@ -109,31 +185,12 @@ export function RiskMap() {
           className="absolute pointer-events-none z-10 bg-card border border-border rounded-lg p-3 shadow-lg max-w-xs"
           style={{ left: tooltip.x + 10, top: tooltip.y + 10 }}
         >
-          <p className="font-semibold text-sm">{formatEventTitle(tooltip.event)}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            <span
-              className={
-                getSeverityLevel(tooltip.event.severity) === "critical"
-                  ? "text-red-400"
-                  : getSeverityLevel(tooltip.event.severity) === "high"
-                  ? "text-orange-400"
-                  : getSeverityLevel(tooltip.event.severity) === "medium"
-                  ? "text-yellow-400"
-                  : "text-green-400"
-              }
-            >
-              {getSeverityLabel(tooltip.event.severity)}
-            </span>
-            {" · "}{tooltip.event.severity.toFixed(1)}/10
-          </p>
-          {tooltip.event.region && (
-            <p className="text-xs text-muted-foreground">{tooltip.event.region}</p>
-          )}
+          <p className="font-semibold text-sm">{tooltip.text}</p>
+          <p className={`text-xs mt-1 ${tooltip.color}`}>{tooltip.subtext}</p>
         </div>
       )}
     </div>
   );
 }
 
-// Export events for parent to use
 export { type MappedEvent };

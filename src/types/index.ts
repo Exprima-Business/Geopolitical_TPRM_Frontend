@@ -44,13 +44,18 @@ export interface Asset {
   company_id: string;
   name: string;
   asset_type: string;
-  address?: string;
-  latitude: number;
-  longitude: number;
-  cloud_provider?: string;
-  cloud_region?: string;
+  address?: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  cloud_provider?: string | null;
+  cloud_region_code?: string | null;
+  vendor_domain?: string | null;
+  country_code?: string | null;
+  external_id?: string | null;
   criticality: "low" | "medium" | "high" | "critical";
+  metadata_?: Record<string, unknown> | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Decision {

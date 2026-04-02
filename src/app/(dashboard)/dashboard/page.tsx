@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { RiskMap } from "@/components/maps/risk-map";
 import { EventDetailPanel } from "@/components/events/event-detail-panel";
+import { AssetDetailPanel } from "@/components/events/asset-detail-panel";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useMapStore } from "@/stores/map-store";
 import { getSeverityLevel, getSeverityLabel, formatEventTitle } from "@/lib/risk-utils";
-import type { RiskEvent } from "@/types";
+import type { RiskEvent, Asset } from "@/types";
 import { AlertTriangle, MapPin, Shield, Bot, X } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
@@ -80,9 +81,16 @@ export default function DashboardPage() {
     });
   }, [allEvents, severityFilter, eventTypeFilter]);
 
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+
   const recentEvents = filteredEvents.slice(0, 8);
   const selectedEvent = selectedEventId ? allEvents.find((e) => e.id === selectedEventId) || null : null;
   const hasFilters = severityFilter.length > 0 || eventTypeFilter.length > 0;
+
+  const handleAssetClick = useCallback((asset: Asset) => {
+    setSelectedEventId(null); // clear event selection
+    setSelectedAsset(asset);
+  }, [setSelectedEventId]);
 
   const statCards = [
     { label: "Active Risk Events", value: hasFilters ? filteredEvents.length : stats.riskEvents, icon: AlertTriangle, color: "text-red-400" },
@@ -153,7 +161,7 @@ export default function DashboardPage() {
       {/* Map + sidebar */}
       <div className="flex flex-1 gap-4 p-6 min-h-0 overflow-hidden">
         <div className="flex-1 min-w-0 rounded-xl overflow-hidden border border-border relative">
-          <RiskMap />
+          <RiskMap onAssetClick={handleAssetClick} />
         </div>
 
         <div className="w-80 shrink-0 overflow-y-auto space-y-4">
@@ -188,11 +196,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Detail panel from map click or sidebar click */}
+      {/* Detail panels from map click or sidebar click */}
       {selectedEvent && (
         <>
           <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSelectedEventId(null)} />
           <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEventId(null)} />
+        </>
+      )}
+      {selectedAsset && !selectedEvent && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSelectedAsset(null)} />
+          <AssetDetailPanel asset={selectedAsset} onClose={() => setSelectedAsset(null)} />
         </>
       )}
     </div>
