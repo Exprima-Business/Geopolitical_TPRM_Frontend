@@ -1,5 +1,23 @@
 import type { RiskEvent } from "@/types";
 
+// --- Distance helpers ---
+
+/** Haversine distance between two [lon, lat] points in kilometers */
+export function haversineKm(
+  a: [number, number],
+  b: [number, number]
+): number {
+  const R = 6371;
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const dLon = ((b[0] - a[0]) * Math.PI) / 180;
+  const lat1 = (a[1] * Math.PI) / 180;
+  const lat2 = (b[1] * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 // --- Severity helpers ---
 
 export type SeverityLevel = "critical" | "high" | "medium" | "low";

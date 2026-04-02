@@ -9,9 +9,19 @@ interface ViewState {
   bearing: number;
 }
 
+type MapViewMode = "flat" | "globe";
+
 interface MapStore {
   viewState: ViewState;
   setViewState: (viewState: ViewState) => void;
+  viewMode: MapViewMode;
+  setViewMode: (mode: MapViewMode) => void;
+  showArcs: boolean;
+  toggleArcs: () => void;
+  showHeatmap: boolean;
+  toggleHeatmap: () => void;
+  proximityRadiusKm: number;
+  setProximityRadiusKm: (km: number) => void;
   selectedEventId: string | null;
   setSelectedEventId: (id: string | null) => void;
   severityFilter: string[];
@@ -34,6 +44,14 @@ export const useMapStore = create<MapStore>()(
         bearing: 0,
       },
       setViewState: (viewState) => set({ viewState }),
+      viewMode: "globe" as MapViewMode,
+      setViewMode: (mode) => set({ viewMode: mode }),
+      showArcs: true,
+      toggleArcs: () => set((s) => ({ showArcs: !s.showArcs })),
+      showHeatmap: true,
+      toggleHeatmap: () => set((s) => ({ showHeatmap: !s.showHeatmap })),
+      proximityRadiusKm: 500,
+      setProximityRadiusKm: (km) => set({ proximityRadiusKm: km }),
       selectedEventId: null,
       setSelectedEventId: (id) => set({ selectedEventId: id }),
       severityFilter: [],
@@ -63,6 +81,10 @@ export const useMapStore = create<MapStore>()(
       partialize: (state) => ({
         severityFilter: state.severityFilter,
         eventTypeFilter: state.eventTypeFilter,
+        viewMode: state.viewMode,
+        showArcs: state.showArcs,
+        showHeatmap: state.showHeatmap,
+        proximityRadiusKm: state.proximityRadiusKm,
       }),
     }
   )

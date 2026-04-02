@@ -38,7 +38,8 @@
       "WebFetch(domain:docs.google.com)",
       "WebFetch(domain:docs.cloud.google.com)",
       "Bash(python -c \"from cryptography.fernet import Fernet; print\\(Fernet.generate_key\\(\\).decode\\(\\)\\)\")",
-      "Bash(python -m json.tool)"
+      "Bash(python -m json.tool)",
+      "WebFetch(domain:www.youtube.com)"
     ]
   }
 }

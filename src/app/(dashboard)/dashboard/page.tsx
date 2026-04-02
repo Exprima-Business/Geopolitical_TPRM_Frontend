@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { useMapStore } from "@/stores/map-store";
 import { getSeverityLevel, getSeverityLabel, formatEventTitle } from "@/lib/risk-utils";
 import type { RiskEvent, Asset } from "@/types";
-import { AlertTriangle, MapPin, Shield, Bot, X } from "lucide-react";
+import { AlertTriangle, MapPin, Shield, Bot, X, Globe, Map as MapIcon, Waves, GitBranch } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
@@ -35,6 +35,47 @@ interface Stats {
   assets: number;
   pendingDecisions: number;
   mitigations: number;
+}
+
+function MapControls() {
+  const { viewMode, setViewMode, showArcs, toggleArcs, showHeatmap, toggleHeatmap } = useMapStore();
+  return (
+    <div className="absolute top-3 right-3 z-20 flex flex-col gap-1">
+      <button
+        onClick={() => setViewMode(viewMode === "globe" ? "flat" : "globe")}
+        className={`p-2 rounded-lg border transition-colors ${
+          viewMode === "globe"
+            ? "bg-primary/20 border-primary text-primary"
+            : "bg-card/80 border-border text-muted-foreground hover:text-foreground"
+        }`}
+        title={viewMode === "globe" ? "Switch to flat map" : "Switch to 3D globe"}
+      >
+        {viewMode === "globe" ? <MapIcon className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
+      </button>
+      <button
+        onClick={toggleArcs}
+        className={`p-2 rounded-lg border transition-colors ${
+          showArcs
+            ? "bg-red-500/20 border-red-500/50 text-red-400"
+            : "bg-card/80 border-border text-muted-foreground hover:text-foreground"
+        }`}
+        title={showArcs ? "Hide threat arcs" : "Show threat arcs"}
+      >
+        <GitBranch className="h-4 w-4" />
+      </button>
+      <button
+        onClick={toggleHeatmap}
+        className={`p-2 rounded-lg border transition-colors ${
+          showHeatmap
+            ? "bg-orange-500/20 border-orange-500/50 text-orange-400"
+            : "bg-card/80 border-border text-muted-foreground hover:text-foreground"
+        }`}
+        title={showHeatmap ? "Hide heat map" : "Show heat map"}
+      >
+        <Waves className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -162,6 +203,9 @@ export default function DashboardPage() {
       <div className="flex flex-1 gap-4 p-6 min-h-0 overflow-hidden">
         <div className="flex-1 min-w-0 rounded-xl overflow-hidden border border-border relative">
           <RiskMap onAssetClick={handleAssetClick} />
+
+          {/* Map controls overlay */}
+          <MapControls />
         </div>
 
         <div className="w-80 shrink-0 overflow-y-auto space-y-4">
