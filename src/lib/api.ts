@@ -61,7 +61,10 @@ export const api = {
 
   companies: (companyId: string) => ({
     assets: {
-      list: () => request<unknown>(`/api/v1/companies/${companyId}/assets`),
+      list: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "?page_size=100";
+        return request<unknown>(`/api/v1/companies/${companyId}/assets${qs}`);
+      },
       create: (data: unknown) => request<unknown>(`/api/v1/companies/${companyId}/assets`, { method: "POST", body: JSON.stringify(data) }),
     },
     decisions: {
