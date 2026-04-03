@@ -202,8 +202,8 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
       }
     }
 
-    // If no DCs, connect offices directly to cloud regions
-    if (dataCenters.length === 0) {
+    // If no DCs (or DCs had no coords), connect offices directly to cloud regions
+    if (dataCenters.length === 0 || links.length === 0) {
       for (const office of offices) {
         const connectedRegions = new Set<string>();
         for (const cloud of cloudAssets) {
@@ -217,6 +217,42 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
             sourceName: office.name,
             targetName: cloud.name,
             linkType: "office-to-cloud",
+          });
+        }
+      }
+    }
+
+    // Connect cloud regions to each other (inter-region links)
+    // Find one representative asset per unique region
+    const regionReps: Record<string, MappedAsset> = {};
+    for (const cloud of cloudAssets) {
+      const region = cloud.cloud_region_code || "";
+      if (region && !regionReps[region]) {
+        regionReps[region] = cloud;
+      }
+    }
+    const regions = Object.values(regionReps);
+    // Connect each region to its nearest 2 peers (mesh topology)
+    for (const region of regions) {
+      const others = regions
+        .filter((r) => r.cloud_region_code !== region.cloud_region_code)
+        .map((r) => ({ asset: r, dist: haversineKm(region._coords, r._coords) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 2);
+
+      for (const { asset: peer } of others) {
+        // Avoid duplicate links (A→B and B→A)
+        const key1 = `${region.cloud_region_code}-${peer.cloud_region_code}`;
+        const key2 = `${peer.cloud_region_code}-${region.cloud_region_code}`;
+        if (!links.some((l) => l.linkType === "region-mesh" &&
+          (l.sourceName === region.name && l.targetName === peer.name ||
+           l.sourceName === peer.name && l.targetName === region.name))) {
+          links.push({
+            source: region._coords,
+            target: peer._coords,
+            sourceName: region.cloud_region_code || region.name,
+            targetName: peer.cloud_region_code || peer.name,
+            linkType: "region-mesh",
           });
         }
       }
@@ -237,10 +273,10 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
           data: supplyChainLinks,
           getSourcePosition: (d: any) => d.source,
           getTargetPosition: (d: any) => d.target,
-          getSourceColor: [59, 130, 246, 80], // blue, semi-transparent
-          getTargetColor: [99, 102, 241, 80], // indigo
-          getWidth: 1,
-          getHeight: 0.15,
+          getSourceColor: [59, 130, 246, 180], // blue
+          getTargetColor: [99, 102, 241, 180], // indigo
+          getWidth: 2,
+          getHeight: 0.25,
           greatCircle: true,
           pickable: true,
           onHover: ({ object, x, y }: any) => {
