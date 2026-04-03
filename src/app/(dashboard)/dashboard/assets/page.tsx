@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { AssetDetailPanel } from "@/components/events/asset-detail-panel";
 import { getAssetLocation, getAssetTypeLabel, getAssetIcon } from "@/lib/asset-utils";
-import type { Asset } from "@/types";
-import { Plus, MapPin, Search } from "lucide-react";
+import type { Asset, AssetRiskScore } from "@/types";
+import { Plus, MapPin, Search, AlertTriangle } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [riskScores, setRiskScores] = useState<Record<string, AssetRiskScore>>({});
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -35,7 +36,16 @@ export default function AssetsPage() {
     }
   };
 
-  useEffect(() => { loadAssets(); }, []);
+  useEffect(() => {
+    loadAssets();
+    // Load risk scores
+    api.companies(COMPANY_ID).riskScores.list().then((data) => {
+      const scores = data as AssetRiskScore[];
+      const map: Record<string, AssetRiskScore> = {};
+      for (const s of scores) map[s.asset_id] = s;
+      setRiskScores(map);
+    }).catch(console.error);
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -158,18 +168,37 @@ export default function AssetsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="font-medium truncate">{asset.name}</h3>
-                    <Badge variant={asset.criticality} className="shrink-0 text-xs">
-                      {asset.criticality}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {riskScores[asset.id]?.risk_score > 0 && (
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                          riskScores[asset.id].risk_score >= 7 ? "bg-red-500/20 text-red-400" :
+                          riskScores[asset.id].risk_score >= 4 ? "bg-orange-500/20 text-orange-400" :
+                          "bg-yellow-500/20 text-yellow-400"
+                        }`}>
+                          <AlertTriangle className="h-3 w-3 inline mr-0.5" />
+                          {riskScores[asset.id].risk_score.toFixed(1)}
+                        </span>
+                      )}
+                      <Badge variant={asset.criticality} className="text-xs">
+                        {asset.criticality}
+                      </Badge>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                     <MapPin className="h-3 w-3 shrink-0" />
                     <span className="truncate">{getAssetLocation(asset)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {getAssetTypeLabel(asset)}
-                    {asset.cloud_region_code && ` · ${asset.cloud_region_code}`}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-muted-foreground">
+                      {getAssetTypeLabel(asset)}
+                      {asset.cloud_region_code && ` · ${asset.cloud_region_code}`}
+                    </p>
+                    {riskScores[asset.id]?.nearby_event_count > 0 && (
+                      <p className="text-xs text-red-400">
+                        {riskScores[asset.id].nearby_event_count} threat{riskScores[asset.id].nearby_event_count > 1 ? "s" : ""} nearby
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>

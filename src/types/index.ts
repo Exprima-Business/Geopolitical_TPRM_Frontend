@@ -100,6 +100,17 @@ export interface CloudConnector {
   updated_at: string;
 }
 
+export interface AssetRiskScore {
+  asset_id: string;
+  asset_name: string;
+  risk_score: number;
+  nearby_event_count: number;
+  highest_severity_event: string | null;
+  highest_severity: number;
+  closest_event_km: number | null;
+  trend: string;
+}
+
 export interface Company {
   id: string;
   name: string;

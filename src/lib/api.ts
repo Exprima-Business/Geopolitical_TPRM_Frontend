@@ -79,6 +79,9 @@ export const api = {
     cloudRegions: {
       list: () => request<unknown>(`/api/v1/companies/${companyId}/cloud-regions`),
     },
+    riskScores: {
+      list: (radiusKm = 500) => request<unknown>(`/api/v1/companies/${companyId}/assets/risk-scores?radius_km=${radiusKm}`),
+    },
     agent: {
       trigger: () => request<unknown>(`/api/v1/companies/${companyId}/agent/trigger`, { method: "POST" }),
     },

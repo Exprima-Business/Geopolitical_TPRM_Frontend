@@ -41,7 +41,15 @@
       "Bash(python -m json.tool)",
       "WebFetch(domain:www.youtube.com)",
       "Bash(python -c \":*)",
-      "WebFetch(domain:api-docs.ranenetwork.com)"
+      "WebFetch(domain:api-docs.ranenetwork.com)",
+      "WebFetch(domain:newsapi.ai)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:apipheny.io)",
+      "WebFetch(domain:www.freepublicapis.com)",
+      "Bash(find \"C:\\\\Projects\\\\Geopolitical_TPRM_Frontend/src/app/\\(dashboard\\)/dashboard\" -type d -maxdepth 1)",
+      "Bash(find \"C:\\\\Projects\\\\Geopolitical_TPRM_Frontend/src/app/\\(dashboard\\)/dashboard/settings\" -type f -name \"*.tsx\")",
+      "Bash(find \"C:\\\\Projects\\\\Geopolitical_TPRM_Frontend/src/app/\\(dashboard\\)/dashboard/assets\" -type f -name \"*.tsx\")",
+      "Bash(find \"C:\\\\Projects\\\\Geopolitical_TPRM_Frontend/src/app/\\(dashboard\\)/dashboard/risks\" -type f -name \"*.tsx\")"
     ]
   }
 }
