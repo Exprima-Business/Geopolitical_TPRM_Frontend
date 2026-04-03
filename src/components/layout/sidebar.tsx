@@ -20,7 +20,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/assets", label: "Assets", icon: MapPin },
   { href: "/dashboard/risks", label: "Risk Events", icon: AlertTriangle },
-  { href: "/dashboard/supply-chain", label: "Supply Chain", icon: Network },
   { href: "/dashboard/mitigations", label: "Mitigations", icon: Shield },
   { href: "/dashboard/agent", label: "AI Agent", icon: Bot },
   { href: "/dashboard/settings/connectors", label: "Connectors", icon: Settings },

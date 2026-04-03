@@ -2,13 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Decision } from "@/types";
 import { Bot, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
+
+function parseList<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === "object" && "items" in data) return (data as { items: T[] }).items || [];
+  return [];
+}
 
 export default function AgentPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -25,8 +31,8 @@ export default function AgentPage() {
       company.decisions.list(),
       company.decisions.pending(),
     ]);
-    if (allDec.status === "fulfilled") setDecisions(allDec.value as Decision[]);
-    if (pendDec.status === "fulfilled") setPending(pendDec.value as Decision[]);
+    if (allDec.status === "fulfilled") setDecisions(parseList<Decision>(allDec.value));
+    if (pendDec.status === "fulfilled") setPending(parseList<Decision>(pendDec.value));
   }
 
   async function triggerAgent() {
@@ -95,8 +101,15 @@ export default function AgentPage() {
         <h2 className="text-lg font-semibold">Decision History ({decisions.length})</h2>
         {decisions.length === 0 ? (
           <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              No agent decisions yet. Click &quot;Trigger Agent&quot; to start an analysis.
+            <CardContent className="p-12 text-center space-y-4">
+              <Bot className="h-16 w-16 mx-auto text-muted-foreground" />
+              <div>
+                <h3 className="text-lg font-semibold">No Agent Decisions Yet</h3>
+                <p className="text-muted-foreground">
+                  Click &quot;Trigger Agent&quot; to start an autonomous risk assessment.
+                  The agent will analyze active threats near your assets and propose mitigations.
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : (
