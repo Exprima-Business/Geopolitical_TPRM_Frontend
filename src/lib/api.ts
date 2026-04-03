@@ -95,5 +95,13 @@ export const api = {
       delete: (connectorId: string) => request<unknown>(`/api/v1/companies/${companyId}/connectors/${connectorId}`, { method: "DELETE" }),
       sync: (connectorId: string) => request<unknown>(`/api/v1/companies/${companyId}/connectors/${connectorId}/sync`, { method: "POST" }),
     },
+    settings: {
+      get: () => request<unknown>(`/api/v1/companies/${companyId}/settings`),
+      update: (data: unknown) =>
+        request<unknown>(`/api/v1/companies/${companyId}/settings`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+    },
   }),
 };

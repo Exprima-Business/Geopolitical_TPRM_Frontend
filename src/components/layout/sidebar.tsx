@@ -22,7 +22,7 @@ const navItems = [
   { href: "/dashboard/risks", label: "Risk Events", icon: AlertTriangle },
   { href: "/dashboard/mitigations", label: "Mitigations", icon: Shield },
   { href: "/dashboard/agent", label: "AI Agent", icon: Bot },
-  { href: "/dashboard/settings/connectors", label: "Connectors", icon: Settings },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
