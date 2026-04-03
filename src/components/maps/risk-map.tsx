@@ -61,7 +61,7 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
   const {
     viewState, setViewState,
     viewMode,
-    showArcs, showHeatmap, proximityRadiusKm,
+    showArcs, showHeatmap, showSupplyChain, proximityRadiusKm,
     selectedEventId, setSelectedEventId,
     severityFilter, eventTypeFilter,
   } = useMapStore();
@@ -144,9 +144,120 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
     return arcs;
   }, [filteredEvents, mappedAssets, showArcs, proximityRadiusKm]);
 
+  // Generate supply chain links between related assets
+  const supplyChainLinks = useMemo(() => {
+    if (!showSupplyChain || mappedAssets.length < 2) return [];
+
+    interface SupplyLink {
+      source: [number, number];
+      target: [number, number];
+      sourceName: string;
+      targetName: string;
+      linkType: string;
+    }
+
+    const links: SupplyLink[] = [];
+    const offices = mappedAssets.filter((a) => a.asset_type === "office");
+    const dataCenters = mappedAssets.filter((a) => a.asset_type === "data_center");
+    const cloudAssets = mappedAssets.filter((a) => a.asset_type === "cloud_region");
+
+    // Connect offices to nearest data center
+    for (const office of offices) {
+      let nearest: MappedAsset | null = null;
+      let nearestDist = Infinity;
+      for (const dc of dataCenters) {
+        const dist = haversineKm(office._coords, dc._coords);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = dc;
+        }
+      }
+      if (nearest) {
+        links.push({
+          source: office._coords,
+          target: nearest._coords,
+          sourceName: office.name,
+          targetName: nearest.name,
+          linkType: "office-to-dc",
+        });
+      }
+    }
+
+    // Connect data centers to cloud regions in same country/provider
+    for (const dc of dataCenters) {
+      // Find cloud assets — connect to first few in different regions
+      const connectedRegions = new Set<string>();
+      for (const cloud of cloudAssets) {
+        const region = cloud.cloud_region_code || "";
+        if (connectedRegions.has(region)) continue;
+        if (connectedRegions.size >= 3) break; // max 3 connections per DC
+        connectedRegions.add(region);
+        links.push({
+          source: dc._coords,
+          target: cloud._coords,
+          sourceName: dc.name,
+          targetName: cloud.name,
+          linkType: "dc-to-cloud",
+        });
+      }
+    }
+
+    // If no DCs, connect offices directly to cloud regions
+    if (dataCenters.length === 0) {
+      for (const office of offices) {
+        const connectedRegions = new Set<string>();
+        for (const cloud of cloudAssets) {
+          const region = cloud.cloud_region_code || "";
+          if (connectedRegions.has(region)) continue;
+          if (connectedRegions.size >= 3) break;
+          connectedRegions.add(region);
+          links.push({
+            source: office._coords,
+            target: cloud._coords,
+            sourceName: office.name,
+            targetName: cloud.name,
+            linkType: "office-to-cloud",
+          });
+        }
+      }
+    }
+
+    return links;
+  }, [mappedAssets, showSupplyChain]);
+
   // Build all layers
   const layers = useMemo(() => {
     const result: unknown[] = [];
+
+    // Layer 0: Supply chain links (bottom — subtle connection lines)
+    if (showSupplyChain && supplyChainLinks.length > 0) {
+      result.push(
+        new ArcLayer({
+          id: "supply-chain-links",
+          data: supplyChainLinks,
+          getSourcePosition: (d: any) => d.source,
+          getTargetPosition: (d: any) => d.target,
+          getSourceColor: [59, 130, 246, 80], // blue, semi-transparent
+          getTargetColor: [99, 102, 241, 80], // indigo
+          getWidth: 1,
+          getHeight: 0.15,
+          greatCircle: true,
+          pickable: true,
+          onHover: ({ object, x, y }: any) => {
+            if (object) {
+              setTooltip({
+                x, y,
+                text: `${object.sourceName} → ${object.targetName}`,
+                subtext: `Supply chain link (${object.linkType.replace(/-/g, " ")})`,
+                color: "text-blue-300",
+              });
+            } else {
+              setTooltip(null);
+            }
+          },
+        })
+      );
+    }
 
     // Layer 1: Heat map (bottom — subtle density glow)
     if (showHeatmap && filteredEvents.length > 0) {
@@ -288,7 +399,7 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
     return result;
   }, [
     filteredEvents, mappedAssets, proximityArcs, showArcs, showHeatmap,
-    selectedEventId, severityFilter, eventTypeFilter, onAssetClick,
+    selectedEventId, severityFilter, eventTypeFilter, onAssetClick, supplyChainLinks, showSupplyChain,
     setSelectedEventId,
   ]);
 

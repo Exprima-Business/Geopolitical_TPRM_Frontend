@@ -20,6 +20,8 @@ interface MapStore {
   toggleArcs: () => void;
   showHeatmap: boolean;
   toggleHeatmap: () => void;
+  showSupplyChain: boolean;
+  toggleSupplyChain: () => void;
   proximityRadiusKm: number;
   setProximityRadiusKm: (km: number) => void;
   selectedEventId: string | null;
@@ -50,6 +52,8 @@ export const useMapStore = create<MapStore>()(
       toggleArcs: () => set((s) => ({ showArcs: !s.showArcs })),
       showHeatmap: true,
       toggleHeatmap: () => set((s) => ({ showHeatmap: !s.showHeatmap })),
+      showSupplyChain: true,
+      toggleSupplyChain: () => set((s) => ({ showSupplyChain: !s.showSupplyChain })),
       proximityRadiusKm: 500,
       setProximityRadiusKm: (km) => set({ proximityRadiusKm: km }),
       selectedEventId: null,
@@ -84,6 +88,7 @@ export const useMapStore = create<MapStore>()(
         viewMode: state.viewMode,
         showArcs: state.showArcs,
         showHeatmap: state.showHeatmap,
+        showSupplyChain: state.showSupplyChain,
         proximityRadiusKm: state.proximityRadiusKm,
       }),
     }

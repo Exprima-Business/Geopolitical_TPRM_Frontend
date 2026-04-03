@@ -39,7 +39,7 @@ interface Stats {
 }
 
 function MapControls() {
-  const { viewMode, setViewMode, showArcs, toggleArcs, showHeatmap, toggleHeatmap } = useMapStore();
+  const { viewMode, setViewMode, showArcs, toggleArcs, showHeatmap, toggleHeatmap, showSupplyChain, toggleSupplyChain } = useMapStore();
   return (
     <div className="absolute top-3 right-3 z-20 flex flex-col gap-1">
       <button
@@ -74,6 +74,17 @@ function MapControls() {
         title={showHeatmap ? "Hide heat map" : "Show heat map"}
       >
         <Waves className="h-4 w-4" />
+      </button>
+      <button
+        onClick={toggleSupplyChain}
+        className={`p-2 rounded-lg border transition-colors ${
+          showSupplyChain
+            ? "bg-blue-500/20 border-blue-500/50 text-blue-400"
+            : "bg-card/80 border-border text-muted-foreground hover:text-foreground"
+        }`}
+        title={showSupplyChain ? "Hide supply chain links" : "Show supply chain links"}
+      >
+        <GitBranch className="h-4 w-4 rotate-90" />
       </button>
     </div>
   );
