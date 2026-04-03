@@ -7,31 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Shield, Bell, Cloud, Save, Loader2, CheckCircle,
+  Shield, Bell, Save, Loader2, CheckCircle,
   AlertTriangle, Bot, Zap, Lock, Sliders, RotateCcw,
 } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
-type Tab = "governance" | "alerts" | "connectors";
+type Tab = "governance" | "alerts";
 
 interface Settings {
-  // Agent Guardrails
   guardrail_auto_approve_max_severity: number;
   guardrail_require_approval_min_severity: number;
   guardrail_escalate_min_severity: number;
   guardrail_max_actions_per_hour: number;
   guardrail_approval_timeout_minutes: number;
   guardrail_blocked_actions: string[];
-  // Proximity Alerts
   proximity_alert_radius_km: number;
   proximity_alert_min_severity: number;
-  // Agent Behavior
   agent_model_high_severity: string;
   agent_model_low_severity: string;
   agent_severity_model_threshold: number;
   agent_enabled: boolean;
-  // Notifications
   notification_email_enabled: boolean;
   notification_email_address: string;
   notification_webhook_enabled: boolean;
@@ -46,7 +42,7 @@ const DEFAULTS: Settings = {
   guardrail_max_actions_per_hour: 20,
   guardrail_approval_timeout_minutes: 60,
   guardrail_blocked_actions: ["terminate_vendor", "shutdown_service"],
-  proximity_alert_radius_km: 500,
+  proximity_alert_radius_km: 100,
   proximity_alert_min_severity: 6.0,
   agent_model_high_severity: "claude-opus-4-20250514",
   agent_model_low_severity: "claude-sonnet-4-20250514",
@@ -62,19 +58,9 @@ const DEFAULTS: Settings = {
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: "governance", label: "Agent Governance", icon: Shield },
   { id: "alerts", label: "Alerts & Notifications", icon: Bell },
-  { id: "connectors", label: "Connectors", icon: Cloud },
 ];
 
-function SeverityBar({ value, max = 10 }: { value: number; max?: number }) {
-  const pct = (value / max) * 100;
-  const color =
-    value <= 4 ? "bg-green-500" : value <= 6 ? "bg-yellow-500" : value <= 8 ? "bg-orange-500" : "bg-red-500";
-  return (
-    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
+/* ── Reusable components ────────────────────────────────── */
 
 function Toggle({
   checked,
@@ -89,7 +75,7 @@ function Toggle({
 }) {
   return (
     <label className="flex items-center justify-between gap-4 cursor-pointer">
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-medium">{label}</p>
         {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
@@ -112,9 +98,8 @@ function Toggle({
   );
 }
 
-function SliderField({
+function CompactSlider({
   label,
-  description,
   value,
   onChange,
   min,
@@ -123,7 +108,6 @@ function SliderField({
   unit = "",
 }: {
   label: string;
-  description: string;
   value: number;
   onChange: (v: number) => void;
   min: number;
@@ -132,15 +116,11 @@ function SliderField({
   unit?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
+        <span className="text-sm font-medium">{label}</span>
         <span className="text-sm font-mono font-bold tabular-nums">
-          {value}
-          {unit}
+          {value}{unit}
         </span>
       </div>
       <input
@@ -150,9 +130,9 @@ function SliderField({
         step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-primary"
+        className="w-full accent-primary h-1.5"
       />
-      <div className="flex justify-between text-xs text-muted-foreground">
+      <div className="flex justify-between text-[10px] text-muted-foreground">
         <span>{min}{unit}</span>
         <span>{max}{unit}</span>
       </div>
@@ -160,7 +140,8 @@ function SliderField({
   );
 }
 
-// ─── Agent Governance Tab ───────────────────────────────────
+/* ── Agent Governance Tab (compact 2-col layout) ────────── */
+
 function GovernanceTab({
   settings,
   update,
@@ -171,157 +152,204 @@ function GovernanceTab({
   const [newBlockedAction, setNewBlockedAction] = useState("");
 
   return (
-    <div className="space-y-6">
-      {/* Agent Enable/Disable */}
-      <Card>
-        <CardContent className="p-5">
-          <Toggle
-            checked={settings.agent_enabled}
-            onChange={(v) => update({ agent_enabled: v })}
-            label="Enable AI Agent"
-            description="When disabled, the agent will not process any risk events or take actions"
-          />
-        </CardContent>
-      </Card>
-
-      {/* Severity Thresholds */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Sliders className="h-4 w-4" /> Severity Thresholds
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <p className="text-sm text-muted-foreground">
-            Control how the agent responds based on event severity. Events below
-            the auto-approve threshold execute immediately. Between auto-approve
-            and require-approval, the agent notifies but proceeds. Above
-            require-approval, human sign-off is required. Above escalation, the
-            event is flagged for immediate attention.
-          </p>
-
-          {/* Visual severity band */}
-          <div className="p-4 rounded-lg border border-border space-y-3">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              <div className="flex-1 text-center">
-                <div className="h-3 rounded-l-full bg-green-500/80" />
-                <span className="text-green-400">Auto-Approve</span>
-              </div>
-              <div className="flex-1 text-center">
-                <div className="h-3 bg-yellow-500/80" />
-                <span className="text-yellow-400">Notify</span>
-              </div>
-              <div className="flex-1 text-center">
-                <div className="h-3 bg-orange-500/80" />
-                <span className="text-orange-400">Require Approval</span>
-              </div>
-              <div className="flex-1 text-center">
-                <div className="h-3 rounded-r-full bg-red-500/80" />
-                <span className="text-red-400">Escalate</span>
-              </div>
+    <div className="space-y-4">
+      {/* Row 1: Agent toggle + Severity band */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Agent toggle */}
+        <Card className="col-span-1">
+          <CardContent className="p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Bot className="h-4 w-4" /> Agent Status
             </div>
-            <div className="flex text-xs text-muted-foreground">
-              <span className="flex-1 text-center">0 — {settings.guardrail_auto_approve_max_severity}</span>
-              <span className="flex-1 text-center">{settings.guardrail_auto_approve_max_severity} — {settings.guardrail_require_approval_min_severity}</span>
-              <span className="flex-1 text-center">{settings.guardrail_require_approval_min_severity} — {settings.guardrail_escalate_min_severity}</span>
-              <span className="flex-1 text-center">{settings.guardrail_escalate_min_severity} — 10</span>
-            </div>
-          </div>
-
-          <SliderField
-            label="Auto-Approve Maximum"
-            description="Events below this severity are auto-approved without notification"
-            value={settings.guardrail_auto_approve_max_severity}
-            onChange={(v) => update({ guardrail_auto_approve_max_severity: v })}
-            min={1}
-            max={10}
-          />
-          <SliderField
-            label="Require Approval Minimum"
-            description="Events at or above this severity require human approval before executing"
-            value={settings.guardrail_require_approval_min_severity}
-            onChange={(v) => update({ guardrail_require_approval_min_severity: v })}
-            min={1}
-            max={10}
-          />
-          <SliderField
-            label="Escalation Minimum"
-            description="Events at or above this severity are escalated for immediate attention"
-            value={settings.guardrail_escalate_min_severity}
-            onChange={(v) => update({ guardrail_escalate_min_severity: v })}
-            min={1}
-            max={10}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Rate Limits */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" /> Rate Limits
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <SliderField
-            label="Max Actions Per Hour"
-            description="Maximum number of agent actions allowed per hour before escalation"
-            value={settings.guardrail_max_actions_per_hour}
-            onChange={(v) => update({ guardrail_max_actions_per_hour: v })}
-            min={5}
-            max={100}
-            step={5}
-          />
-          <SliderField
-            label="Approval Timeout"
-            description="Minutes before a pending approval request expires"
-            value={settings.guardrail_approval_timeout_minutes}
-            onChange={(v) => update({ guardrail_approval_timeout_minutes: v })}
-            min={15}
-            max={1440}
-            step={15}
-            unit=" min"
-          />
-        </CardContent>
-      </Card>
-
-      {/* Blocked Actions */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Lock className="h-4 w-4" /> Blocked Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            These action types are permanently blocked. The agent will escalate instead of executing them.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {settings.guardrail_blocked_actions.map((action) => (
-              <Badge key={action} variant="destructive" className="gap-1">
-                {action.replace(/_/g, " ")}
-                <button
-                  onClick={() =>
-                    update({
-                      guardrail_blocked_actions: settings.guardrail_blocked_actions.filter(
-                        (a) => a !== action
-                      ),
-                    })
-                  }
-                  className="ml-1 hover:text-foreground"
+            <Toggle
+              checked={settings.agent_enabled}
+              onChange={(v) => update({ agent_enabled: v })}
+              label={settings.agent_enabled ? "Active" : "Disabled"}
+            />
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">High-Severity Model</label>
+                <select
+                  value={settings.agent_model_high_severity}
+                  onChange={(e) => update({ agent_model_high_severity: e.target.value })}
+                  className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
                 >
-                  ×
-                </button>
-              </Badge>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="e.g. delete_asset"
-              value={newBlockedAction}
-              onChange={(e) => setNewBlockedAction(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newBlockedAction.trim()) {
+                  <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                  <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Low-Severity Model</label>
+                <select
+                  value={settings.agent_model_low_severity}
+                  onChange={(e) => update({ agent_model_low_severity: e.target.value })}
+                  className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+                >
+                  <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                  <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
+                </select>
+              </div>
+            </div>
+            <CompactSlider
+              label="Model Switch Threshold"
+              value={settings.agent_severity_model_threshold}
+              onChange={(v) => update({ agent_severity_model_threshold: v })}
+              min={1}
+              max={10}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Severity band visualization */}
+        <Card className="col-span-2">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold mb-3">
+              <Sliders className="h-4 w-4" /> Severity Response Thresholds
+            </div>
+            {/* Visual band */}
+            <div className="mb-4 space-y-1.5">
+              <div className="flex items-center gap-0.5 text-[10px] font-medium">
+                <div className="flex-1 text-center">
+                  <div className="h-4 rounded-l-full bg-green-500/80 flex items-center justify-center text-white">
+                    Auto-Approve
+                  </div>
+                </div>
+                <div className="flex-1 text-center">
+                  <div className="h-4 bg-yellow-500/80 flex items-center justify-center text-white">
+                    Notify
+                  </div>
+                </div>
+                <div className="flex-1 text-center">
+                  <div className="h-4 bg-orange-500/80 flex items-center justify-center text-white">
+                    Approval Required
+                  </div>
+                </div>
+                <div className="flex-1 text-center">
+                  <div className="h-4 rounded-r-full bg-red-500/80 flex items-center justify-center text-white">
+                    Escalate
+                  </div>
+                </div>
+              </div>
+              <div className="flex text-[10px] text-muted-foreground">
+                <span className="flex-1 text-center">0 — {settings.guardrail_auto_approve_max_severity}</span>
+                <span className="flex-1 text-center">{settings.guardrail_auto_approve_max_severity} — {settings.guardrail_require_approval_min_severity}</span>
+                <span className="flex-1 text-center">{settings.guardrail_require_approval_min_severity} — {settings.guardrail_escalate_min_severity}</span>
+                <span className="flex-1 text-center">{settings.guardrail_escalate_min_severity} — 10</span>
+              </div>
+            </div>
+
+            {/* 3 sliders side by side */}
+            <div className="grid grid-cols-3 gap-4">
+              <CompactSlider
+                label="Auto-Approve Max"
+                value={settings.guardrail_auto_approve_max_severity}
+                onChange={(v) => update({ guardrail_auto_approve_max_severity: v })}
+                min={1}
+                max={10}
+              />
+              <CompactSlider
+                label="Require Approval"
+                value={settings.guardrail_require_approval_min_severity}
+                onChange={(v) => update({ guardrail_require_approval_min_severity: v })}
+                min={1}
+                max={10}
+              />
+              <CompactSlider
+                label="Escalation"
+                value={settings.guardrail_escalate_min_severity}
+                onChange={(v) => update({ guardrail_escalate_min_severity: v })}
+                min={1}
+                max={10}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Row 2: Rate limits + Blocked actions */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Rate Limits */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold mb-3">
+              <Zap className="h-4 w-4" /> Rate Limits
+            </div>
+            <div className="space-y-4">
+              <CompactSlider
+                label="Max Actions / Hour"
+                value={settings.guardrail_max_actions_per_hour}
+                onChange={(v) => update({ guardrail_max_actions_per_hour: v })}
+                min={5}
+                max={100}
+                step={5}
+              />
+              <CompactSlider
+                label="Approval Timeout"
+                value={settings.guardrail_approval_timeout_minutes}
+                onChange={(v) => update({ guardrail_approval_timeout_minutes: v })}
+                min={15}
+                max={480}
+                step={15}
+                unit=" min"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Blocked Actions */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+              <Lock className="h-4 w-4" /> Blocked Actions
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              The agent will escalate instead of executing these actions.
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {settings.guardrail_blocked_actions.map((action) => (
+                <Badge key={action} variant="destructive" className="gap-1 text-xs">
+                  {action.replace(/_/g, " ")}
+                  <button
+                    onClick={() =>
+                      update({
+                        guardrail_blocked_actions: settings.guardrail_blocked_actions.filter(
+                          (a) => a !== action
+                        ),
+                      })
+                    }
+                    className="ml-0.5 hover:text-foreground"
+                  >
+                    x
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. delete_asset"
+                className="h-8 text-xs"
+                value={newBlockedAction}
+                onChange={(e) => setNewBlockedAction(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newBlockedAction.trim()) {
+                    update({
+                      guardrail_blocked_actions: [
+                        ...settings.guardrail_blocked_actions,
+                        newBlockedAction.trim(),
+                      ],
+                    });
+                    setNewBlockedAction("");
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={!newBlockedAction.trim()}
+                onClick={() => {
                   update({
                     guardrail_blocked_actions: [
                       ...settings.guardrail_blocked_actions,
@@ -329,81 +357,20 @@ function GovernanceTab({
                     ],
                   });
                   setNewBlockedAction("");
-                }
-              }}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!newBlockedAction.trim()}
-              onClick={() => {
-                update({
-                  guardrail_blocked_actions: [
-                    ...settings.guardrail_blocked_actions,
-                    newBlockedAction.trim(),
-                  ],
-                });
-                setNewBlockedAction("");
-              }}
-            >
-              Add
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Model Selection */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Bot className="h-4 w-4" /> Model Selection
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            The agent uses a more capable model for high-severity events and a faster model for routine analysis.
-          </p>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium block mb-1">High-Severity Model</label>
-              <select
-                value={settings.agent_model_high_severity}
-                onChange={(e) => update({ agent_model_high_severity: e.target.value })}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                }}
               >
-                <option value="claude-opus-4-20250514">Claude Opus 4</option>
-                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
-              </select>
+                Add
+              </Button>
             </div>
-            <div>
-              <label className="text-sm font-medium block mb-1">Low-Severity Model</label>
-              <select
-                value={settings.agent_model_low_severity}
-                onChange={(e) => update({ agent_model_low_severity: e.target.value })}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-              >
-                <option value="claude-opus-4-20250514">Claude Opus 4</option>
-                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
-              </select>
-            </div>
-          </div>
-          <SliderField
-            label="Model Switch Threshold"
-            description="Severity at or above which the high-severity model is used"
-            value={settings.agent_severity_model_threshold}
-            onChange={(v) => update({ agent_severity_model_threshold: v })}
-            min={1}
-            max={10}
-          />
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
-// ─── Alerts & Notifications Tab ────────────────────────────
+/* ── Alerts & Notifications Tab (compact 2-col) ─────────── */
+
 function AlertsTab({
   settings,
   update,
@@ -412,83 +379,84 @@ function AlertsTab({
   update: (partial: Partial<Settings>) => void;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-2 gap-4">
       {/* Proximity Alerts */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold mb-3">
             <AlertTriangle className="h-4 w-4" /> Proximity Alert Rules
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <p className="text-sm text-muted-foreground">
-            Alerts trigger when a risk event occurs within a set radius of your assets. Adjust the radius and
-            minimum severity to control alert sensitivity.
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Alerts fire when a risk event occurs within a set radius of your assets.
           </p>
-          <SliderField
-            label="Alert Radius"
-            description="Distance in kilometers from an asset to trigger a proximity alert"
-            value={settings.proximity_alert_radius_km}
-            onChange={(v) => update({ proximity_alert_radius_km: v })}
-            min={50}
-            max={2000}
-            step={50}
-            unit=" km"
-          />
-          <SliderField
-            label="Minimum Severity"
-            description="Only events at or above this severity trigger proximity alerts"
-            value={settings.proximity_alert_min_severity}
-            onChange={(v) => update({ proximity_alert_min_severity: v })}
-            min={1}
-            max={10}
-          />
+          <div className="space-y-4">
+            <CompactSlider
+              label="Alert Radius"
+              value={settings.proximity_alert_radius_km}
+              onChange={(v) => update({ proximity_alert_radius_km: v })}
+              min={1}
+              max={250}
+              step={5}
+              unit=" km"
+            />
+            <div className="text-xs text-muted-foreground">
+              ≈ {Math.round(settings.proximity_alert_radius_km * 0.621371)} miles
+            </div>
+            <CompactSlider
+              label="Min Severity"
+              value={settings.proximity_alert_min_severity}
+              onChange={(v) => update({ proximity_alert_min_severity: v })}
+              min={1}
+              max={10}
+            />
+          </div>
         </CardContent>
       </Card>
 
       {/* Notification Channels */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
             <Bell className="h-4 w-4" /> Notification Channels
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
+          </div>
+
           <Toggle
             checked={settings.notification_in_app_enabled}
             onChange={(v) => update({ notification_in_app_enabled: v })}
             label="In-App Notifications"
-            description="Show notifications in the platform notification center"
+            description="Notification center alerts"
           />
 
-          <div className="border-t border-border pt-4 space-y-3">
+          <div className="border-t border-border pt-3 space-y-2">
             <Toggle
               checked={settings.notification_email_enabled}
               onChange={(v) => update({ notification_email_enabled: v })}
               label="Email Notifications"
-              description="Send alert emails for high-severity events and approval requests"
+              description="Alerts for high-severity events"
             />
             {settings.notification_email_enabled && (
               <Input
                 type="email"
                 placeholder="alerts@yourcompany.com"
+                className="h-8 text-xs"
                 value={settings.notification_email_address}
                 onChange={(e) => update({ notification_email_address: e.target.value })}
               />
             )}
           </div>
 
-          <div className="border-t border-border pt-4 space-y-3">
+          <div className="border-t border-border pt-3 space-y-2">
             <Toggle
               checked={settings.notification_webhook_enabled}
               onChange={(v) => update({ notification_webhook_enabled: v })}
-              label="Webhook Notifications"
-              description="POST JSON payloads to a webhook URL (Slack, Teams, PagerDuty, etc.)"
+              label="Webhook"
+              description="Slack, Teams, PagerDuty, etc."
             />
             {settings.notification_webhook_enabled && (
               <Input
                 type="url"
-                placeholder="https://hooks.slack.com/services/..."
+                placeholder="https://hooks.slack.com/..."
+                className="h-8 text-xs"
                 value={settings.notification_webhook_url}
                 onChange={(e) => update({ notification_webhook_url: e.target.value })}
               />
@@ -500,14 +468,8 @@ function AlertsTab({
   );
 }
 
-// ─── Connectors Tab (redirect) ─────────────────────────────
-function ConnectorsRedirect() {
-  // We render the connectors inline via Next.js routing
-  // This is just a fallback — the tab click navigates to /dashboard/settings/connectors
-  return null;
-}
+/* ── Main Settings Page ─────────────────────────────────── */
 
-// ─── Main Settings Page ────────────────────────────────────
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("governance");
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
@@ -564,28 +526,33 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground">
-            Configure agent governance, alert rules, and platform preferences.
+          <p className="text-sm text-muted-foreground">
+            Agent governance, alert rules, and notification preferences.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <span className="flex items-center gap-1 text-xs text-yellow-400">
+              <AlertTriangle className="h-3 w-3" /> Unsaved
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={handleReset} disabled={saving}>
-            <RotateCcw className="h-4 w-4" /> Reset to Defaults
+            <RotateCcw className="h-3.5 w-3.5" /> Reset
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !dirty}>
             {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : saved ? (
-              <CheckCircle className="h-4 w-4" />
+              <CheckCircle className="h-3.5 w-3.5" />
             ) : (
-              <Save className="h-4 w-4" />
+              <Save className="h-3.5 w-3.5" />
             )}
-            {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
+            {saving ? "Saving..." : saved ? "Saved!" : "Save"}
           </Button>
         </div>
       </div>
@@ -598,15 +565,8 @@ export default function SettingsPage() {
           return (
             <button
               key={t.id}
-              onClick={() => {
-                if (t.id === "connectors") {
-                  // Navigate to connectors sub-page
-                  window.location.href = "/dashboard/settings/connectors";
-                  return;
-                }
-                setTab(t.id);
-              }}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 isActive
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -618,14 +578,6 @@ export default function SettingsPage() {
           );
         })}
       </div>
-
-      {/* Dirty indicator */}
-      {dirty && (
-        <div className="flex items-center gap-2 text-sm text-yellow-400">
-          <AlertTriangle className="h-4 w-4" />
-          You have unsaved changes
-        </div>
-      )}
 
       {/* Tab Content */}
       {tab === "governance" && <GovernanceTab settings={settings} update={update} />}
