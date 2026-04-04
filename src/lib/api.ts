@@ -71,7 +71,7 @@ export const api = {
       list: () => request<unknown>(`/api/v1/companies/${companyId}/decisions`),
       pending: () => request<unknown>(`/api/v1/companies/${companyId}/decisions/pending`),
       approve: (decisionId: string, approved: boolean) =>
-        request<unknown>(`/api/v1/companies/${companyId}/decisions/${decisionId}/approve`, { method: "POST", body: JSON.stringify({ approved }) }),
+        request<unknown>(`/api/v1/companies/${companyId}/decisions/${decisionId}/approve`, { method: "POST", body: JSON.stringify({ approval_status: approved ? "approved" : "rejected" }) }),
     },
     mitigations: {
       list: () => request<unknown>(`/api/v1/companies/${companyId}/mitigations`),
