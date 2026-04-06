@@ -92,9 +92,9 @@ const DECISION_ICONS: Record<string, { icon: typeof Bot; color: string; label: s
 };
 
 const TOOL_ICONS: Record<string, { icon: typeof Bot; color: string; label: string }> = {
-  assess_risk_for_asset: { icon: Target, color: "text-blue-400", label: "Assess Asset Risk" },
+  find_nearby_assets: { icon: Target, color: "text-cyan-400", label: "Find Nearby Assets" },
+  assess_risk_for_asset: { icon: Eye, color: "text-blue-400", label: "Assess Asset Risk" },
   propose_mitigation: { icon: Shield, color: "text-green-400", label: "Propose Mitigation" },
-  execute_mitigation: { icon: Zap, color: "text-orange-400", label: "Execute Mitigation" },
   send_alert: { icon: Send, color: "text-yellow-400", label: "Send Alert" },
   escalate_to_human: { icon: AlertTriangle, color: "text-red-400", label: "Escalate to Human" },
 };
@@ -198,23 +198,32 @@ function summarizeToolCall(entry: ToolCallLog): string {
   const output = entry.tool_output;
 
   switch (entry.tool_name) {
+    case "find_nearby_assets": {
+      const count = (output as { assets_found?: number })?.assets_found || 0;
+      const radius = (input as { radius_km?: number })?.radius_km || 500;
+      const title = (output as { event_title?: string })?.event_title || "";
+      return count > 0
+        ? `Found ${count} assets within ${radius}km of "${title}"`
+        : `No assets found within ${radius}km — event has low direct impact`;
+    }
     case "assess_risk_for_asset": {
-      const count = (output as { assets_assessed?: number })?.assets_assessed
-        || (output as { assets?: unknown[] })?.assets?.length
-        || 0;
-      return `Assessed ${count} assets within proximity of event`;
+      const name = (output as { asset_name?: string })?.asset_name || "asset";
+      const dist = (output as { distance_km?: number })?.distance_km;
+      const level = (output as { risk_level?: string })?.risk_level || "";
+      return `Assessed "${name}"${dist != null ? ` (${dist}km away)` : ""} — ${level} risk`;
     }
     case "propose_mitigation": {
       const action = (input as { action_type?: string })?.action_type || "action";
+      const assetName = (output as { asset_name?: string })?.asset_name || "";
       const status = (output as { approval_status?: string })?.approval_status || "";
-      return `Proposed "${action}" — ${status.replace(/_/g, " ")}`;
+      return `Proposed "${action.replace(/_/g, " ")}" for ${assetName} — ${status.replace(/_/g, " ")}`;
     }
-    case "execute_mitigation":
-      return `Executed mitigation action`;
-    case "send_alert":
-      return `Sent alert notification`;
+    case "send_alert": {
+      const channel = (input as { channel?: string })?.channel || "notification";
+      return `Sent ${channel} alert to stakeholders`;
+    }
     case "escalate_to_human":
-      return `Escalated for human review — requires manual approval`;
+      return `Escalated for human review — awaiting approval`;
     default:
       return `Called ${entry.tool_name}`;
   }
