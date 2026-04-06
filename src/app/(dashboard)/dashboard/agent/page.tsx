@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { getSeverityLabel } from "@/lib/risk-utils";
 import type { RiskEvent } from "@/types";
 import {
@@ -491,11 +492,12 @@ export default function AgentPage() {
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [triggering, setTriggering] = useState(false);
   const [lastRunResult, setLastRunResult] = useState<AgentRunResult | null>(null);
+  const [eventSearch, setEventSearch] = useState("");
 
   useEffect(() => {
     loadData();
     api.riskEvents.active().then((data) => {
-      const events = (data as RiskEvent[]).slice(0, 20);
+      const events = data as RiskEvent[];
       setActiveEvents(events);
       if (events.length > 0) setSelectedEventId(events[0].id);
     }).catch(console.error);
@@ -548,6 +550,13 @@ export default function AgentPage() {
   }
 
   const selectedEvent = activeEvents.find((e) => e.id === selectedEventId);
+  const filteredEvents = eventSearch
+    ? activeEvents.filter((e) =>
+        e.title.toLowerCase().includes(eventSearch.toLowerCase()) ||
+        (e.country_code || "").toLowerCase().includes(eventSearch.toLowerCase()) ||
+        (e.category || "").toLowerCase().includes(eventSearch.toLowerCase())
+      )
+    : activeEvents;
 
   return (
     <div className="p-6 space-y-6">
@@ -565,14 +574,24 @@ export default function AgentPage() {
         <CardContent className="p-4">
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="text-sm font-medium mb-1 block">Select Risk Event</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">Select Risk Event</label>
+                <span className="text-xs text-muted-foreground">{activeEvents.length} active events</span>
+              </div>
+              <Input
+                placeholder="Search events by title, country, or category..."
+                className="h-8 text-xs mb-1.5"
+                value={eventSearch}
+                onChange={(e) => setEventSearch(e.target.value)}
+              />
               <select
                 value={selectedEventId}
                 onChange={(e) => setSelectedEventId(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                size={1}
               >
-                {activeEvents.length === 0 && <option value="">No active events</option>}
-                {activeEvents.map((e) => (
+                {filteredEvents.length === 0 && <option value="">No matching events</option>}
+                {filteredEvents.map((e) => (
                   <option key={e.id} value={e.id}>
                     [{getSeverityLabel(e.severity)}] {e.title.slice(0, 80)}
                   </option>
