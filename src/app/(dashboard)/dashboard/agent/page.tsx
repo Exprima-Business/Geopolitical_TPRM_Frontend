@@ -5,12 +5,13 @@ import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getSeverityLevel, getSeverityLabel, getTrendIndicator } from "@/lib/risk-utils";
-import type { RiskEvent, Decision } from "@/types";
+import { getSeverityLabel } from "@/lib/risk-utils";
+import type { RiskEvent } from "@/types";
 import {
   Bot, CheckCircle, XCircle, Loader2, AlertTriangle,
   ChevronDown, ChevronRight, Shield, Zap, Eye, Send,
-  Clock, FileText,
+  Clock, FileText, Brain, Wrench, ArrowRight, Activity,
+  BarChart3, Target, Info,
 } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
@@ -21,12 +22,81 @@ function parseList<T>(data: unknown): T[] {
   return [];
 }
 
-// Decision type icons and colors
+/* ── Type definitions ───────────────────────────────────── */
+
+interface ToolCallLog {
+  iteration: number;
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+  tool_output: Record<string, unknown>;
+  success: boolean;
+  duration_ms: number;
+  timestamp: string;
+}
+
+interface AgentThinking {
+  iteration: number;
+  text: string;
+  timestamp: string;
+}
+
+interface AgentDecisionSummary {
+  id: string;
+  decision_type: string;
+  action: string;
+  approval_status: string;
+  guardrail_level?: string;
+  reasoning?: string;
+  confidence?: number;
+  asset_id?: string;
+}
+
+interface AgentRunResult {
+  risk_event_id: string;
+  model_used: string;
+  decisions: AgentDecisionSummary[];
+  tool_calls: ToolCallLog[];
+  thinking: AgentThinking[];
+  summary?: string;
+  tool_calls_made: number;
+  iterations: number;
+  completed: boolean;
+  error?: string;
+}
+
+interface AgentDecision {
+  id: string;
+  company_id: string;
+  risk_event_id: string | null;
+  asset_id: string | null;
+  decision_type: string;
+  action: string;
+  reasoning: string | null;
+  confidence: number | null;
+  guardrail_checks: Record<string, unknown> | null;
+  approval_status: string;
+  approved_by: string | null;
+  executed_at: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/* ── Constants ──────────────────────────────────────────── */
+
 const DECISION_ICONS: Record<string, { icon: typeof Bot; color: string; label: string }> = {
   assess: { icon: Eye, color: "text-blue-400", label: "Assessment" },
   mitigate: { icon: Shield, color: "text-green-400", label: "Mitigation" },
   alert: { icon: Send, color: "text-yellow-400", label: "Alert" },
   escalate: { icon: AlertTriangle, color: "text-red-400", label: "Escalation" },
+};
+
+const TOOL_ICONS: Record<string, { icon: typeof Bot; color: string; label: string }> = {
+  assess_risk_for_asset: { icon: Target, color: "text-blue-400", label: "Assess Asset Risk" },
+  propose_mitigation: { icon: Shield, color: "text-green-400", label: "Propose Mitigation" },
+  execute_mitigation: { icon: Zap, color: "text-orange-400", label: "Execute Mitigation" },
+  send_alert: { icon: Send, color: "text-yellow-400", label: "Send Alert" },
+  escalate_to_human: { icon: AlertTriangle, color: "text-red-400", label: "Escalate to Human" },
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -47,23 +117,252 @@ const APPROVAL_BADGES: Record<string, { variant: "default" | "destructive" | "se
   expired: { variant: "outline", label: "Expired" },
 };
 
-interface AgentDecision {
-  id: string;
-  company_id: string;
-  risk_event_id: string | null;
-  asset_id: string | null;
-  decision_type: string;
-  action: string;
-  reasoning: string | null;
-  confidence: number | null;
-  guardrail_checks: Record<string, unknown> | null;
-  approval_status: string;
-  approved_by: string | null;
-  executed_at: string | null;
-  result: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
+/* ── Activity Feed Item ─────────────────────────────────── */
+
+function ThinkingBlock({ entry }: { entry: AgentThinking }) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+          <Brain className="h-4 w-4 text-purple-400" />
+        </div>
+        <div className="w-px flex-1 bg-border mt-1" />
+      </div>
+      <div className="pb-4 flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-semibold text-purple-400">Agent Reasoning</span>
+          <span className="text-[10px] text-muted-foreground">Step {entry.iteration}</span>
+        </div>
+        <p className="text-sm text-foreground/90 leading-relaxed">{entry.text}</p>
+      </div>
+    </div>
+  );
 }
+
+function ToolCallBlock({ entry }: { entry: ToolCallLog }) {
+  const [expanded, setExpanded] = useState(false);
+  const toolInfo = TOOL_ICONS[entry.tool_name] || { icon: Wrench, color: "text-muted-foreground", label: entry.tool_name };
+  const Icon = toolInfo.icon;
+
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${entry.success ? "bg-emerald-500/20" : "bg-red-500/20"}`}>
+          <Icon className={`h-4 w-4 ${entry.success ? toolInfo.color : "text-red-400"}`} />
+        </div>
+        <div className="w-px flex-1 bg-border mt-1" />
+      </div>
+      <div className="pb-4 flex-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold">{toolInfo.label}</span>
+            <Badge variant={entry.success ? "default" : "destructive"} className="text-[10px] px-1.5 py-0">
+              {entry.success ? "OK" : "Failed"}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">{entry.duration_ms}ms</span>
+            <span className="text-[10px] text-muted-foreground">Step {entry.iteration}</span>
+          </div>
+          <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        {/* Always show a brief summary */}
+        <div className="text-xs text-muted-foreground mt-1">
+          {summarizeToolCall(entry)}
+        </div>
+
+        {expanded && (
+          <div className="mt-2 space-y-2">
+            <div>
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase">Input</span>
+              <pre className="mt-1 p-2 rounded bg-muted/50 text-xs font-mono overflow-x-auto max-h-40 overflow-y-auto">
+                {JSON.stringify(entry.tool_input, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase">Output</span>
+              <pre className={`mt-1 p-2 rounded text-xs font-mono overflow-x-auto max-h-40 overflow-y-auto ${entry.success ? "bg-muted/50" : "bg-red-500/10"}`}>
+                {JSON.stringify(entry.tool_output, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function summarizeToolCall(entry: ToolCallLog): string {
+  const input = entry.tool_input;
+  const output = entry.tool_output;
+
+  switch (entry.tool_name) {
+    case "assess_risk_for_asset": {
+      const count = (output as { assets_assessed?: number })?.assets_assessed
+        || (output as { assets?: unknown[] })?.assets?.length
+        || 0;
+      return `Assessed ${count} assets within proximity of event`;
+    }
+    case "propose_mitigation": {
+      const action = (input as { action_type?: string })?.action_type || "action";
+      const status = (output as { approval_status?: string })?.approval_status || "";
+      return `Proposed "${action}" — ${status.replace(/_/g, " ")}`;
+    }
+    case "execute_mitigation":
+      return `Executed mitigation action`;
+    case "send_alert":
+      return `Sent alert notification`;
+    case "escalate_to_human":
+      return `Escalated for human review — requires manual approval`;
+    default:
+      return `Called ${entry.tool_name}`;
+  }
+}
+
+/* ── Agent Run Result Panel ─────────────────────────────── */
+
+function RunResultPanel({
+  result,
+  eventTitle,
+}: {
+  result: AgentRunResult;
+  eventTitle: string;
+}) {
+  // Interleave thinking and tool calls by iteration order
+  const activityFeed: { type: "thinking" | "tool"; entry: AgentThinking | ToolCallLog; sortKey: string }[] = [];
+
+  for (const t of result.thinking) {
+    activityFeed.push({ type: "thinking", entry: t, sortKey: `${t.iteration}-0-${t.timestamp}` });
+  }
+  for (const tc of result.tool_calls) {
+    activityFeed.push({ type: "tool", entry: tc, sortKey: `${tc.iteration}-1-${tc.timestamp}` });
+  }
+  activityFeed.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" /> Agent Analysis Results
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant={result.completed ? "default" : "destructive"}>
+              {result.completed ? "Completed" : "Failed"}
+            </Badge>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">
+          Event: <span className="font-medium text-foreground">{eventTitle}</span>
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Stats row */}
+        <div className="grid grid-cols-4 gap-3">
+          <div className="p-3 rounded-lg bg-muted/50 text-center">
+            <div className="text-lg font-bold">{result.iterations}</div>
+            <div className="text-[10px] text-muted-foreground uppercase">Iterations</div>
+          </div>
+          <div className="p-3 rounded-lg bg-muted/50 text-center">
+            <div className="text-lg font-bold">{result.tool_calls_made}</div>
+            <div className="text-[10px] text-muted-foreground uppercase">Tool Calls</div>
+          </div>
+          <div className="p-3 rounded-lg bg-muted/50 text-center">
+            <div className="text-lg font-bold">{result.decisions.length}</div>
+            <div className="text-[10px] text-muted-foreground uppercase">Decisions</div>
+          </div>
+          <div className="p-3 rounded-lg bg-muted/50 text-center">
+            <div className="text-xs font-mono font-bold truncate">{result.model_used.replace("claude-", "").replace("-20250514", "")}</div>
+            <div className="text-[10px] text-muted-foreground uppercase">Model</div>
+          </div>
+        </div>
+
+        {/* Error banner */}
+        {result.error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+            <strong>Error:</strong> {result.error}
+          </div>
+        )}
+
+        {/* Summary */}
+        {result.summary && (
+          <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Agent Summary</span>
+            </div>
+            <p className="text-sm leading-relaxed">{result.summary}</p>
+          </div>
+        )}
+
+        {/* Activity Feed */}
+        {activityFeed.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
+              <BarChart3 className="h-4 w-4" /> Activity Log
+            </h3>
+            <div className="pl-1">
+              {activityFeed.map((item, i) => (
+                item.type === "thinking" ? (
+                  <ThinkingBlock key={`t-${i}`} entry={item.entry as AgentThinking} />
+                ) : (
+                  <ToolCallBlock key={`tc-${i}`} entry={item.entry as ToolCallLog} />
+                )
+              ))}
+              {/* End marker */}
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-xs text-muted-foreground">Analysis complete</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Decisions created */}
+        {result.decisions.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-2">
+              <FileText className="h-4 w-4" /> Decisions Created
+            </h3>
+            <div className="space-y-2">
+              {result.decisions.map((d) => {
+                const typeInfo = DECISION_ICONS[d.decision_type] || DECISION_ICONS.assess;
+                const Icon = typeInfo.icon;
+                const approvalInfo = APPROVAL_BADGES[d.approval_status] || APPROVAL_BADGES.pending_approval;
+                return (
+                  <div key={d.id} className="flex items-start gap-2 p-2 rounded bg-muted/30">
+                    <Icon className={`h-4 w-4 mt-0.5 ${typeInfo.color}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{ACTION_LABELS[d.action] || d.action}</span>
+                        <Badge variant={approvalInfo.variant} className="text-[10px] px-1.5 py-0">
+                          {approvalInfo.label}
+                        </Badge>
+                        {d.guardrail_level && (
+                          <span className="text-[10px] text-muted-foreground">Guardrail: {d.guardrail_level}</span>
+                        )}
+                      </div>
+                      {d.reasoning && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.reasoning}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── Decision Card (for history/pending) ────────────────── */
 
 function DecisionCard({
   decision,
@@ -87,7 +386,6 @@ function DecisionCard({
             <Icon className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            {/* Header row */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="font-medium">{ACTION_LABELS[decision.action] || decision.action}</h3>
@@ -100,12 +398,10 @@ function DecisionCard({
               </button>
             </div>
 
-            {/* Summary */}
             {decision.reasoning && (
               <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{decision.reasoning}</p>
             )}
 
-            {/* Meta row */}
             <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
               <span className={typeInfo.color}>{typeInfo.label}</span>
               {decision.confidence != null && (
@@ -114,20 +410,17 @@ function DecisionCard({
               <span><Clock className="h-3 w-3 inline mr-1" />{new Date(decision.created_at).toLocaleString()}</span>
             </div>
 
-            {/* Expanded details */}
             {expanded && (
               <div className="mt-4 space-y-4 border-t border-border pt-4">
-                {/* Full reasoning */}
                 {decision.reasoning && (
                   <div>
                     <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
-                      <FileText className="h-3.5 w-3.5" /> Reasoning
+                      <FileText className="h-3.5 w-3.5" /> Full Reasoning
                     </h4>
                     <p className="text-sm text-muted-foreground">{decision.reasoning}</p>
                   </div>
                 )}
 
-                {/* Guardrail checks */}
                 {decision.guardrail_checks && Object.keys(decision.guardrail_checks).length > 0 && (
                   <div>
                     <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
@@ -144,17 +437,14 @@ function DecisionCard({
                   </div>
                 )}
 
-                {/* Execution result */}
                 {decision.result && Object.keys(decision.result).length > 0 && (
                   <div>
                     <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
-                      <Zap className="h-3.5 w-3.5" /> Result
+                      <Zap className="h-3.5 w-3.5" /> Execution Result
                     </h4>
-                    <div className="p-3 rounded bg-muted/50 text-xs font-mono">
-                      {Object.entries(decision.result).map(([key, val]) => (
-                        <div key={key}><span className="text-muted-foreground">{key}:</span> {String(val)}</div>
-                      ))}
-                    </div>
+                    <pre className="p-3 rounded bg-muted/50 text-xs font-mono overflow-x-auto">
+                      {JSON.stringify(decision.result, null, 2)}
+                    </pre>
                   </div>
                 )}
 
@@ -166,7 +456,6 @@ function DecisionCard({
               </div>
             )}
 
-            {/* Approval buttons for pending decisions */}
             {decision.approval_status === "pending_approval" && (
               <div className="flex gap-2 mt-3">
                 <Button size="sm" onClick={() => onApprove(decision.id)}>
@@ -184,19 +473,20 @@ function DecisionCard({
   );
 }
 
+/* ── Main Page ──────────────────────────────────────────── */
+
 export default function AgentPage() {
   const [decisions, setDecisions] = useState<AgentDecision[]>([]);
   const [pending, setPending] = useState<AgentDecision[]>([]);
   const [activeEvents, setActiveEvents] = useState<RiskEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [triggering, setTriggering] = useState(false);
-  const [triggerResult, setTriggerResult] = useState<string | null>(null);
+  const [lastRunResult, setLastRunResult] = useState<AgentRunResult | null>(null);
 
   useEffect(() => {
     loadData();
-    // Load active events for the trigger dropdown
     api.riskEvents.active().then((data) => {
-      const events = (data as RiskEvent[]).slice(0, 20); // Top 20 by severity
+      const events = (data as RiskEvent[]).slice(0, 20);
       setActiveEvents(events);
       if (events.length > 0) setSelectedEventId(events[0].id);
     }).catch(console.error);
@@ -215,38 +505,40 @@ export default function AgentPage() {
   async function triggerAgent() {
     if (!selectedEventId) return;
     setTriggering(true);
-    setTriggerResult(null);
+    setLastRunResult(null);
     try {
-      const result = await api.post<Record<string, unknown>>(
+      const result = await api.post<AgentRunResult>(
         `/api/v1/companies/${COMPANY_ID}/agent/trigger`,
         { risk_event_id: selectedEventId }
       );
-      const res = result as { decisions?: unknown[]; tool_calls_made?: number; error?: string };
-      if (res.error) {
-        setTriggerResult(`Error: ${res.error}`);
-      } else {
-        setTriggerResult(
-          `Agent completed: ${res.decisions?.length || 0} decisions, ${res.tool_calls_made || 0} tool calls`
-        );
-      }
+      setLastRunResult(result);
       await loadData();
     } catch (err) {
-      setTriggerResult(`Failed: ${err}`);
+      setLastRunResult({
+        risk_event_id: selectedEventId,
+        model_used: "unknown",
+        decisions: [],
+        tool_calls: [],
+        thinking: [],
+        tool_calls_made: 0,
+        iterations: 0,
+        completed: false,
+        error: String(err),
+      });
     }
     setTriggering(false);
   }
 
   async function handleApproval(decisionId: string, approved: boolean) {
     try {
-      await api.companies(COMPANY_ID).decisions.approve(
-        decisionId,
-        approved
-      );
+      await api.companies(COMPANY_ID).decisions.approve(decisionId, approved);
       await loadData();
     } catch (err) {
       console.error(err);
     }
   }
+
+  const selectedEvent = activeEvents.find((e) => e.id === selectedEventId);
 
   return (
     <div className="p-6 space-y-6">
@@ -254,22 +546,17 @@ export default function AgentPage() {
       <div>
         <h1 className="text-2xl font-bold">AI Agent</h1>
         <p className="text-muted-foreground">
-          Autonomous risk assessment and mitigation engine. The agent analyzes threats,
-          assesses asset impact, proposes mitigations, and executes approved actions.
+          Autonomous risk assessment and mitigation engine. Run analysis on any risk event
+          to see the agent&apos;s full reasoning, tool usage, and decisions.
         </p>
       </div>
 
       {/* Trigger Section */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Bot className="h-5 w-5 text-primary" /> Trigger Agent Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-3">
+        <CardContent className="p-4">
+          <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="text-sm font-medium mb-1 block">Select Risk Event to Analyze</label>
+              <label className="text-sm font-medium mb-1 block">Select Risk Event</label>
               <select
                 value={selectedEventId}
                 onChange={(e) => setSelectedEventId(e.target.value)}
@@ -283,27 +570,71 @@ export default function AgentPage() {
                 ))}
               </select>
             </div>
-            <div className="flex items-end">
-              <Button onClick={triggerAgent} disabled={triggering || !selectedEventId}>
-                {triggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                {triggering ? "Analyzing..." : "Run Agent"}
-              </Button>
-            </div>
+            <Button onClick={triggerAgent} disabled={triggering || !selectedEventId} className="min-w-[140px]">
+              {triggering ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4" />
+                  Run Analysis
+                </>
+              )}
+            </Button>
           </div>
-          {triggerResult && (
-            <div className={`p-3 rounded text-sm ${triggerResult.startsWith("Error") || triggerResult.startsWith("Failed") ? "bg-red-400/10 text-red-400 border border-red-400/20" : "bg-green-400/10 text-green-400 border border-green-400/20"}`}>
-              {triggerResult}
+
+          {/* Workflow explainer */}
+          {!lastRunResult && !triggering && (
+            <div className="mt-3 p-3 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p><strong>What the agent does:</strong> Analyzes the selected event using Claude AI with access to your asset data.</p>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">1. Assess Assets</Badge>
+                    <ArrowRight className="h-3 w-3" />
+                    <Badge variant="outline" className="text-[10px]">2. Evaluate Risk</Badge>
+                    <ArrowRight className="h-3 w-3" />
+                    <Badge variant="outline" className="text-[10px]">3. Propose Actions</Badge>
+                    <ArrowRight className="h-3 w-3" />
+                    <Badge variant="outline" className="text-[10px]">4. Execute or Escalate</Badge>
+                  </div>
+                  <p>Actions are governed by your <a href="/dashboard/settings" className="text-primary underline">Settings</a> — low-severity actions auto-execute, high-severity actions require your approval.</p>
+                </div>
+              </div>
             </div>
           )}
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p><strong>How it works:</strong> The agent uses Claude to analyze the selected risk event:</p>
-            <p>1. Assesses which assets are impacted based on proximity and criticality</p>
-            <p>2. Proposes mitigations (monitoring, backup activation, failover, etc.)</p>
-            <p>3. Low-severity actions auto-execute; high-severity actions require your approval</p>
-            <p>4. Sends alerts and escalates when uncertainty is high</p>
-          </div>
+
+          {/* Loading state */}
+          {triggering && (
+            <div className="mt-4 p-6 rounded-lg border border-primary/20 bg-primary/5">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Bot className="h-8 w-8 text-primary" />
+                  <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Agent is analyzing...</p>
+                  <p className="text-xs text-muted-foreground">
+                    Assessing nearby assets, evaluating risk exposure, and determining actions.
+                    This may take 10-30 seconds.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Last Run Result */}
+      {lastRunResult && (
+        <RunResultPanel
+          result={lastRunResult}
+          eventTitle={selectedEvent?.title || "Unknown Event"}
+        />
+      )}
 
       {/* Pending Approvals */}
       {pending.length > 0 && (
@@ -313,7 +644,7 @@ export default function AgentPage() {
             Pending Approvals ({pending.length})
           </h2>
           <p className="text-sm text-muted-foreground">
-            These actions require your review. High-severity or disruptive actions are held for human approval per guardrail policy.
+            High-severity or disruptive actions held for human review per your guardrail policy.
           </p>
           {pending.map((d) => (
             <DecisionCard
@@ -332,16 +663,15 @@ export default function AgentPage() {
           <FileText className="h-5 w-5" />
           Decision History ({decisions.length})
         </h2>
-        {decisions.length === 0 ? (
+        {decisions.length === 0 && !lastRunResult ? (
           <Card>
             <CardContent className="p-12 text-center space-y-4">
               <Bot className="h-16 w-16 mx-auto text-muted-foreground" />
               <div>
                 <h3 className="text-lg font-semibold">No Agent Activity Yet</h3>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Select an active risk event above and click &quot;Run Agent&quot; to start
-                  an autonomous analysis. The agent will assess threats, propose mitigations,
-                  and create an audit trail of all decisions.
+                  Select an active risk event and click &quot;Run Analysis&quot; to see the
+                  agent assess threats, propose mitigations, and create a full audit trail.
                 </p>
               </div>
             </CardContent>
