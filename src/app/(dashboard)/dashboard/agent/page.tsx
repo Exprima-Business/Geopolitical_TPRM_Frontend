@@ -7,12 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { getSeverityLabel } from "@/lib/risk-utils";
+import {
+  type ActionTemplate,
+  loadTemplates,
+  findTemplateForAction,
+  TEMPLATE_ICONS,
+} from "@/lib/action-templates";
 import type { RiskEvent } from "@/types";
 import {
   Bot, CheckCircle, XCircle, Loader2, AlertTriangle,
   ChevronDown, ChevronRight, Shield, Zap, Eye, Send,
   Clock, FileText, Brain, Wrench, ArrowRight, Activity,
-  BarChart3, Target, Info,
+  BarChart3, Target, Info, BookOpen, Users,
 } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
@@ -372,14 +378,90 @@ function RunResultPanel({
   );
 }
 
+/* ── Matched Playbook Block ─────────────────────────────── */
+
+function TemplatePlaybookBlock({ template }: { template: ActionTemplate }) {
+  const Icon = TEMPLATE_ICONS[template.action] ?? BookOpen;
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-start gap-2">
+        <Icon className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold">{template.name}</span>
+            <Badge variant="outline" className="text-[10px]">
+              Matched Playbook
+            </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              Severity {template.severity_min}–{template.severity_max}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
+          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" /> {template.estimated_duration}
+            </span>
+            {template.required_roles.length > 0 && (
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3" /> {template.required_roles.join(", ")}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {template.steps.length > 0 && (
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1.5">
+            Playbook Steps
+          </div>
+          <ol className="space-y-1">
+            {template.steps.map((step, i) => (
+              <li key={i} className="flex gap-2 text-xs">
+                <span className="text-muted-foreground font-mono w-4 shrink-0">{i + 1}.</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {template.risks.length > 0 && (
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1.5">
+            Risks of Action
+          </div>
+          <ul className="space-y-1">
+            {template.risks.map((risk, i) => (
+              <li key={i} className="flex gap-2 text-xs">
+                <AlertTriangle className="h-3 w-3 text-yellow-400 mt-0.5 shrink-0" />
+                <span>{risk}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="text-[10px] text-muted-foreground italic border-t border-primary/10 pt-2">
+        Playbook configured in{" "}
+        <a href="/dashboard/settings" className="text-primary underline">
+          Settings → Action Templates
+        </a>
+      </div>
+    </div>
+  );
+}
+
 /* ── Decision Card (for history/pending) ────────────────── */
 
 function DecisionCard({
   decision,
+  templates,
   onApprove,
   onReject,
 }: {
   decision: AgentDecision;
+  templates: ActionTemplate[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
 }) {
@@ -387,6 +469,7 @@ function DecisionCard({
   const typeInfo = DECISION_ICONS[decision.decision_type] || DECISION_ICONS.assess;
   const Icon = typeInfo.icon;
   const approvalInfo = APPROVAL_BADGES[decision.approval_status] || APPROVAL_BADGES.pending_approval;
+  const matchedTemplate = findTemplateForAction(decision.action, templates);
 
   return (
     <Card className={decision.approval_status === "pending_approval" ? "border-yellow-500/30" : ""}>
@@ -397,11 +480,16 @@ function DecisionCard({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-medium">{ACTION_LABELS[decision.action] || decision.action}</h3>
                 <Badge variant={approvalInfo.variant} className="text-xs">
                   {approvalInfo.label}
                 </Badge>
+                {matchedTemplate && (
+                  <Badge variant="outline" className="text-[10px] gap-1">
+                    <BookOpen className="h-3 w-3" /> {matchedTemplate.name}
+                  </Badge>
+                )}
               </div>
               <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
                 {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -422,6 +510,8 @@ function DecisionCard({
 
             {expanded && (
               <div className="mt-4 space-y-4 border-t border-border pt-4">
+                {matchedTemplate && <TemplatePlaybookBlock template={matchedTemplate} />}
+
                 {decision.reasoning && (
                   <div>
                     <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
@@ -493,9 +583,11 @@ export default function AgentPage() {
   const [triggering, setTriggering] = useState(false);
   const [lastRunResult, setLastRunResult] = useState<AgentRunResult | null>(null);
   const [eventSearch, setEventSearch] = useState("");
+  const [templates, setTemplates] = useState<ActionTemplate[]>([]);
 
   useEffect(() => {
     loadData();
+    setTemplates(loadTemplates(COMPANY_ID));
     api.riskEvents.active().then((data) => {
       const events = data as RiskEvent[];
       setActiveEvents(events);
@@ -678,6 +770,7 @@ export default function AgentPage() {
             <DecisionCard
               key={d.id}
               decision={d}
+              templates={templates}
               onApprove={(id) => handleApproval(id, true)}
               onReject={(id) => handleApproval(id, false)}
             />
@@ -709,6 +802,7 @@ export default function AgentPage() {
             <DecisionCard
               key={d.id}
               decision={d}
+              templates={templates}
               onApprove={(id) => handleApproval(id, true)}
               onReject={(id) => handleApproval(id, false)}
             />

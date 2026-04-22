@@ -9,11 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import {
   Shield, Bell, Save, Loader2, CheckCircle,
   AlertTriangle, Bot, Zap, Lock, Sliders, RotateCcw,
+  BookOpen, ChevronDown, ChevronRight, Plus, Trash2,
 } from "lucide-react";
+import {
+  type ActionTemplate,
+  DEFAULT_TEMPLATES,
+  TEMPLATE_ICONS,
+  loadTemplates,
+  saveTemplates,
+  resetTemplates,
+} from "@/lib/action-templates";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
-type Tab = "governance" | "alerts";
+type Tab = "governance" | "alerts" | "templates";
 
 interface Settings {
   guardrail_auto_approve_max_severity: number;
@@ -57,6 +66,7 @@ const DEFAULTS: Settings = {
 
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: "governance", label: "Agent Governance", icon: Shield },
+  { id: "templates", label: "Action Templates", icon: BookOpen },
   { id: "alerts", label: "Alerts & Notifications", icon: Bell },
 ];
 
@@ -468,11 +478,402 @@ function AlertsTab({
   );
 }
 
+/* ── Action Templates Tab ───────────────────────────────── */
+
+function TemplateCard({
+  template,
+  onChange,
+  onDelete,
+}: {
+  template: ActionTemplate;
+  onChange: (next: ActionTemplate) => void;
+  onDelete?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [newStep, setNewStep] = useState("");
+  const [newRisk, setNewRisk] = useState("");
+  const Icon = TEMPLATE_ICONS[template.action] ?? BookOpen;
+
+  return (
+    <Card className={!template.enabled ? "opacity-60" : ""}>
+      <CardContent className="p-4 space-y-3">
+        {/* Header row */}
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium text-sm">{template.name}</h3>
+              {template.custom && (
+                <Badge variant="outline" className="text-[10px]">Custom</Badge>
+              )}
+              <Badge variant="secondary" className="text-[10px]">
+                Severity {template.severity_min}–{template.severity_max}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
+            <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
+              <span>⏱ {template.estimated_duration}</span>
+              <span>👥 {template.required_roles.join(", ")}</span>
+              <span>{template.steps.length} steps · {template.risks.length} risks</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={template.enabled}
+              onClick={() => onChange({ ...template, enabled: !template.enabled })}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                template.enabled ? "bg-primary" : "bg-muted"
+              }`}
+              aria-label={template.enabled ? "Disable template" : "Enable template"}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0 transition-transform ${
+                  template.enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <button
+              onClick={() => setExpanded((x) => !x)}
+              className="text-muted-foreground hover:text-foreground p-1"
+            >
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {expanded && (
+          <div className="space-y-4 border-t border-border pt-3">
+            {/* Severity range */}
+            <div className="grid grid-cols-2 gap-4">
+              <CompactSlider
+                label="Min Severity"
+                value={template.severity_min}
+                onChange={(v) =>
+                  onChange({
+                    ...template,
+                    severity_min: v,
+                    severity_max: Math.max(v, template.severity_max),
+                  })
+                }
+                min={1}
+                max={10}
+              />
+              <CompactSlider
+                label="Max Severity"
+                value={template.severity_max}
+                onChange={(v) =>
+                  onChange({
+                    ...template,
+                    severity_max: v,
+                    severity_min: Math.min(v, template.severity_min),
+                  })
+                }
+                min={1}
+                max={10}
+              />
+            </div>
+
+            {/* Metadata */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Estimated Duration</label>
+                <Input
+                  className="h-8 text-xs"
+                  value={template.estimated_duration}
+                  onChange={(e) => onChange({ ...template, estimated_duration: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">
+                  Required Roles (comma-separated)
+                </label>
+                <Input
+                  className="h-8 text-xs"
+                  value={template.required_roles.join(", ")}
+                  onChange={(e) =>
+                    onChange({
+                      ...template,
+                      required_roles: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Steps */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">
+                  Playbook Steps
+                </label>
+                <span className="text-[10px] text-muted-foreground">{template.steps.length}</span>
+              </div>
+              <ol className="space-y-1.5 mb-2">
+                {template.steps.map((step, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-[10px] text-muted-foreground font-mono mt-2 w-4 shrink-0">
+                      {i + 1}.
+                    </span>
+                    <Input
+                      className="h-8 text-xs"
+                      value={step}
+                      onChange={(e) => {
+                        const steps = [...template.steps];
+                        steps[i] = e.target.value;
+                        onChange({ ...template, steps });
+                      }}
+                    />
+                    <button
+                      onClick={() =>
+                        onChange({
+                          ...template,
+                          steps: template.steps.filter((_, idx) => idx !== i),
+                        })
+                      }
+                      className="text-muted-foreground hover:text-red-400 p-1.5 shrink-0"
+                      aria-label="Delete step"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              <div className="flex gap-2">
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="Add step..."
+                  value={newStep}
+                  onChange={(e) => setNewStep(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newStep.trim()) {
+                      onChange({ ...template, steps: [...template.steps, newStep.trim()] });
+                      setNewStep("");
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={!newStep.trim()}
+                  onClick={() => {
+                    onChange({ ...template, steps: [...template.steps, newStep.trim()] });
+                    setNewStep("");
+                  }}
+                >
+                  <Plus className="h-3 w-3" /> Add
+                </Button>
+              </div>
+            </div>
+
+            {/* Risks */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">
+                  Risks of Action
+                </label>
+                <span className="text-[10px] text-muted-foreground">{template.risks.length}</span>
+              </div>
+              <ul className="space-y-1.5 mb-2">
+                {template.risks.map((risk, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-400 mt-2 shrink-0" />
+                    <Input
+                      className="h-8 text-xs"
+                      value={risk}
+                      onChange={(e) => {
+                        const risks = [...template.risks];
+                        risks[i] = e.target.value;
+                        onChange({ ...template, risks });
+                      }}
+                    />
+                    <button
+                      onClick={() =>
+                        onChange({
+                          ...template,
+                          risks: template.risks.filter((_, idx) => idx !== i),
+                        })
+                      }
+                      className="text-muted-foreground hover:text-red-400 p-1.5 shrink-0"
+                      aria-label="Delete risk"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-2">
+                <Input
+                  className="h-8 text-xs"
+                  placeholder="Add risk..."
+                  value={newRisk}
+                  onChange={(e) => setNewRisk(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newRisk.trim()) {
+                      onChange({ ...template, risks: [...template.risks, newRisk.trim()] });
+                      setNewRisk("");
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={!newRisk.trim()}
+                  onClick={() => {
+                    onChange({ ...template, risks: [...template.risks, newRisk.trim()] });
+                    setNewRisk("");
+                  }}
+                >
+                  <Plus className="h-3 w-3" /> Add
+                </Button>
+              </div>
+            </div>
+
+            {template.custom && onDelete && (
+              <div className="flex justify-end pt-2 border-t border-border">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={onDelete}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete Template
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TemplatesTab({
+  templates,
+  setTemplates,
+}: {
+  templates: ActionTemplate[];
+  setTemplates: (t: ActionTemplate[]) => void;
+}) {
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newAction, setNewAction] = useState("");
+
+  function updateTemplate(id: string, next: ActionTemplate) {
+    setTemplates(templates.map((t) => (t.id === id ? next : t)));
+  }
+
+  function deleteTemplate(id: string) {
+    setTemplates(templates.filter((t) => t.id !== id));
+  }
+
+  function addCustom() {
+    const action = newAction.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    if (!newName.trim() || !action) return;
+    const tpl: ActionTemplate = {
+      id: `tpl_custom_${Date.now()}`,
+      action,
+      name: newName.trim(),
+      description: "Custom action template.",
+      severity_min: 5,
+      severity_max: 8,
+      estimated_duration: "TBD",
+      required_roles: [],
+      steps: [],
+      risks: [],
+      enabled: true,
+      custom: true,
+    };
+    setTemplates([...templates, tpl]);
+    setNewName("");
+    setNewAction("");
+    setShowNewForm(false);
+  }
+
+  const enabledCount = templates.filter((t) => t.enabled).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary + controls */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-5 w-5 text-primary" />
+              <div>
+                <h2 className="text-sm font-semibold">Response Playbooks</h2>
+                <p className="text-xs text-muted-foreground">
+                  Predefined action templates the agent selects from when recommending mitigations.{" "}
+                  <span className="text-foreground font-medium">{enabledCount} enabled</span> of {templates.length}.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowNewForm((x) => !x)}
+              className="h-8 text-xs"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Template
+            </Button>
+          </div>
+
+          {showNewForm && (
+            <div className="mt-3 pt-3 border-t border-border grid grid-cols-[1fr_1fr_auto] gap-2">
+              <Input
+                placeholder="Template name (e.g. Isolate Network Segment)"
+                className="h-8 text-xs"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <Input
+                placeholder="action_key (e.g. isolate_network)"
+                className="h-8 text-xs font-mono"
+                value={newAction}
+                onChange={(e) => setNewAction(e.target.value)}
+              />
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                disabled={!newName.trim() || !newAction.trim()}
+                onClick={addCustom}
+              >
+                Create
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Template cards */}
+      <div className="space-y-3">
+        {templates.map((tpl) => (
+          <TemplateCard
+            key={tpl.id}
+            template={tpl}
+            onChange={(next) => updateTemplate(tpl.id, next)}
+            onDelete={tpl.custom ? () => deleteTemplate(tpl.id) : undefined}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Settings Page ─────────────────────────────────── */
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("governance");
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
+  const [templates, setTemplatesState] = useState<ActionTemplate[]>(DEFAULT_TEMPLATES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -480,7 +881,17 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettings();
+    setTemplatesState(loadTemplates(COMPANY_ID));
   }, []);
+
+  function updateTemplates(next: ActionTemplate[]) {
+    setTemplatesState(next);
+    saveTemplates(COMPANY_ID, next);
+  }
+
+  function resetTemplatesToDefaults() {
+    setTemplatesState(resetTemplates(COMPANY_ID));
+  }
 
   async function loadSettings() {
     try {
@@ -536,24 +947,35 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {dirty && (
-            <span className="flex items-center gap-1 text-xs text-yellow-400">
-              <AlertTriangle className="h-3 w-3" /> Unsaved
-            </span>
+          {tab === "templates" ? (
+            <>
+              <span className="text-xs text-muted-foreground">Templates auto-save</span>
+              <Button variant="outline" size="sm" onClick={resetTemplatesToDefaults}>
+                <RotateCcw className="h-3.5 w-3.5" /> Reset Templates
+              </Button>
+            </>
+          ) : (
+            <>
+              {dirty && (
+                <span className="flex items-center gap-1 text-xs text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" /> Unsaved
+                </span>
+              )}
+              <Button variant="outline" size="sm" onClick={handleReset} disabled={saving}>
+                <RotateCcw className="h-3.5 w-3.5" /> Reset
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || !dirty}>
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                {saving ? "Saving..." : saved ? "Saved!" : "Save"}
+              </Button>
+            </>
           )}
-          <Button variant="outline" size="sm" onClick={handleReset} disabled={saving}>
-            <RotateCcw className="h-3.5 w-3.5" /> Reset
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !dirty}>
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : saved ? (
-              <CheckCircle className="h-3.5 w-3.5" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            {saving ? "Saving..." : saved ? "Saved!" : "Save"}
-          </Button>
         </div>
       </div>
 
@@ -581,6 +1003,7 @@ export default function SettingsPage() {
 
       {/* Tab Content */}
       {tab === "governance" && <GovernanceTab settings={settings} update={update} />}
+      {tab === "templates" && <TemplatesTab templates={templates} setTemplates={updateTemplates} />}
       {tab === "alerts" && <AlertsTab settings={settings} update={update} />}
     </div>
   );
