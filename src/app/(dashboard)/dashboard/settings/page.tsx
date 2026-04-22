@@ -22,6 +22,11 @@ import {
   deleteTemplate,
   resetTemplates,
 } from "@/lib/action-templates";
+import {
+  type IntegrationConnection,
+  loadConnections,
+} from "@/lib/integration-connections";
+import { INTEGRATIONS, findIntegration } from "@/lib/integrations";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
@@ -485,27 +490,37 @@ function AlertsTab({
 
 function TemplateCard({
   template,
+  connections,
   onChange,
   onDelete,
 }: {
   template: ActionTemplate;
+  connections: IntegrationConnection[];
   onChange: (next: ActionTemplate) => void;
   onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [newStep, setNewStep] = useState("");
   const [newRisk, setNewRisk] = useState("");
   const Icon = TEMPLATE_ICONS[template.action_key] ?? BookOpen;
 
-  const makeStep = (label: string): TemplateStep => ({
-    step_order: template.steps.length,
-    label,
-    integration_id: "webhook",
-    action_key: "send_payload",
-    params_template: {},
-    required: false,
-    timeout_seconds: 30,
-  });
+  // Sensible default for a new step: pick the first configured connection and
+  // its first capability. Falls back to webhook if no connections configured.
+  const makeStep = (label: string): TemplateStep => {
+    const firstConn = connections[0];
+    const spec = firstConn ? findIntegration(firstConn.integration_id) : undefined;
+    return {
+      step_order: template.steps.length,
+      label,
+      integration_connection_id: firstConn?.id,
+      integration_id: firstConn?.integration_id ?? "webhook",
+      action_key: spec?.capabilities[0]?.action ?? "send_payload",
+      params_template: {},
+      required: false,
+      timeout_seconds: 30,
+    };
+  };
 
   return (
     <Card className={!template.is_enabled ? "opacity-60" : ""}>
@@ -628,37 +643,240 @@ function TemplateCard({
                 </label>
                 <span className="text-[10px] text-muted-foreground">{template.steps.length}</span>
               </div>
-              <ol className="space-y-1.5 mb-2">
-                {template.steps.map((step, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-[10px] text-muted-foreground font-mono mt-2 w-4 shrink-0">
-                      {i + 1}.
-                    </span>
-                    <Input
-                      className="h-8 text-xs"
-                      value={step.label}
-                      onChange={(e) => {
-                        const steps = [...template.steps];
-                        steps[i] = { ...steps[i], label: e.target.value };
-                        onChange({ ...template, steps });
-                      }}
-                    />
-                    <button
-                      onClick={() =>
-                        onChange({
-                          ...template,
-                          steps: template.steps
-                            .filter((_, idx) => idx !== i)
-                            .map((s, idx) => ({ ...s, step_order: idx })),
-                        })
-                      }
-                      className="text-muted-foreground hover:text-red-400 p-1.5 shrink-0"
-                      aria-label="Delete step"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
+              {connections.length === 0 && (
+                <div className="mb-2 p-2 rounded border border-yellow-400/30 bg-yellow-400/5 text-[11px] text-yellow-100/90">
+                  <AlertTriangle className="h-3 w-3 inline mr-1 text-yellow-400" />
+                  No integrations configured. Steps added here won&apos;t run until you connect an integration in
+                  Settings → Integrations.
+                </div>
+              )}
+              <ol className="space-y-2 mb-2">
+                {template.steps.map((step, i) => {
+                  const stepConn = step.integration_connection_id
+                    ? connections.find((c) => c.id === step.integration_connection_id)
+                    : connections.find((c) => c.integration_id === step.integration_id && c.is_enabled);
+                  const stepSpec = findIntegration(step.integration_id);
+                  const availableForSpec = connections.filter(
+                    (c) => c.integration_id === step.integration_id,
+                  );
+                  const stepOpen = expandedStep === i;
+
+                  return (
+                    <li key={i} className="rounded-md border border-border bg-muted/20">
+                      <div className="flex items-start gap-2 p-2">
+                        <span className="text-[10px] text-muted-foreground font-mono mt-2 w-4 shrink-0">
+                          {i + 1}.
+                        </span>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="Step label (shown on agent decision cards)"
+                            value={step.label}
+                            onChange={(e) => {
+                              const steps = [...template.steps];
+                              steps[i] = { ...steps[i], label: e.target.value };
+                              onChange({ ...template, steps });
+                            }}
+                          />
+                          <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                            <Badge
+                              variant={stepConn?.status === "connected" ? "default" : "outline"}
+                              className="text-[10px] px-1.5 py-0"
+                            >
+                              {stepSpec?.name ?? step.integration_id}
+                            </Badge>
+                            <span className="text-muted-foreground font-mono">·</span>
+                            <span className="text-muted-foreground font-mono">{step.action_key}</span>
+                            {stepConn ? (
+                              <>
+                                <span className="text-muted-foreground font-mono">·</span>
+                                <span className="text-muted-foreground">{stepConn.display_name}</span>
+                              </>
+                            ) : (
+                              <span className="text-red-400">· no matching connection</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setExpandedStep(stepOpen ? null : i)}
+                          className="text-muted-foreground hover:text-foreground p-1.5 shrink-0"
+                          aria-label="Configure step"
+                        >
+                          {stepOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                          onClick={() =>
+                            onChange({
+                              ...template,
+                              steps: template.steps
+                                .filter((_, idx) => idx !== i)
+                                .map((s, idx) => ({ ...s, step_order: idx })),
+                            })
+                          }
+                          className="text-muted-foreground hover:text-red-400 p-1.5 shrink-0"
+                          aria-label="Delete step"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {stepOpen && (
+                        <div className="px-2 pb-3 pt-1 space-y-2 border-t border-border/60">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-muted-foreground uppercase block mb-1">
+                                Integration
+                              </label>
+                              <select
+                                value={step.integration_id}
+                                onChange={(e) => {
+                                  const newIntegrationId = e.target.value;
+                                  const spec = findIntegration(newIntegrationId);
+                                  const conn = connections.find(
+                                    (c) => c.integration_id === newIntegrationId,
+                                  );
+                                  const steps = [...template.steps];
+                                  steps[i] = {
+                                    ...steps[i],
+                                    integration_id: newIntegrationId,
+                                    integration_connection_id: conn?.id,
+                                    action_key: spec?.capabilities[0]?.action ?? steps[i].action_key,
+                                  };
+                                  onChange({ ...template, steps });
+                                }}
+                                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+                              >
+                                {INTEGRATIONS.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted-foreground uppercase block mb-1">
+                                Connection
+                              </label>
+                              <select
+                                value={step.integration_connection_id ?? ""}
+                                onChange={(e) => {
+                                  const steps = [...template.steps];
+                                  steps[i] = {
+                                    ...steps[i],
+                                    integration_connection_id: e.target.value || undefined,
+                                  };
+                                  onChange({ ...template, steps });
+                                }}
+                                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+                                disabled={availableForSpec.length === 0}
+                              >
+                                {availableForSpec.length === 0 ? (
+                                  <option value="">(none configured)</option>
+                                ) : (
+                                  <>
+                                    <option value="">First connected (automatic)</option>
+                                    {availableForSpec.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.display_name} {c.status === "connected" ? "✓" : ""}
+                                      </option>
+                                    ))}
+                                  </>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-muted-foreground uppercase block mb-1">
+                              Action
+                            </label>
+                            <select
+                              value={step.action_key}
+                              onChange={(e) => {
+                                const steps = [...template.steps];
+                                steps[i] = { ...steps[i], action_key: e.target.value };
+                                onChange({ ...template, steps });
+                              }}
+                              className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+                            >
+                              {(stepSpec?.capabilities ?? []).map((cap) => (
+                                <option key={cap.action} value={cap.action}>
+                                  {cap.label}
+                                </option>
+                              ))}
+                            </select>
+                            {stepSpec?.capabilities.find((c) => c.action === step.action_key) && (
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {
+                                  stepSpec.capabilities.find((c) => c.action === step.action_key)
+                                    ?.description
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-muted-foreground uppercase block mb-1">
+                              Params (JSON, supports {"{{event.title}}"}, {"{{asset.name}}"}, etc.)
+                            </label>
+                            <textarea
+                              className="flex w-full rounded-md border border-input bg-transparent px-2 py-1 text-[11px] font-mono min-h-[72px]"
+                              value={JSON.stringify(step.params_template ?? {}, null, 2)}
+                              onChange={(e) => {
+                                const steps = [...template.steps];
+                                try {
+                                  steps[i] = {
+                                    ...steps[i],
+                                    params_template: e.target.value
+                                      ? JSON.parse(e.target.value)
+                                      : {},
+                                  };
+                                  onChange({ ...template, steps });
+                                } catch {
+                                  // Ignore invalid JSON while typing
+                                }
+                              }}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="flex items-center gap-2 text-[11px]">
+                              <input
+                                type="checkbox"
+                                checked={step.required}
+                                onChange={(e) => {
+                                  const steps = [...template.steps];
+                                  steps[i] = { ...steps[i], required: e.target.checked };
+                                  onChange({ ...template, steps });
+                                }}
+                              />
+                              Required (halt pipeline on failure)
+                            </label>
+                            <div className="flex items-center gap-2 text-[11px]">
+                              <span className="text-muted-foreground">Timeout</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={300}
+                                className="h-7 text-xs w-20"
+                                value={step.timeout_seconds}
+                                onChange={(e) => {
+                                  const steps = [...template.steps];
+                                  steps[i] = {
+                                    ...steps[i],
+                                    timeout_seconds: Math.max(1, Math.min(300, Number(e.target.value) || 30)),
+                                  };
+                                  onChange({ ...template, steps });
+                                }}
+                              />
+                              <span className="text-muted-foreground">sec</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
               <div className="flex gap-2">
                 <Input
@@ -779,12 +997,14 @@ function TemplateCard({
 
 function TemplatesTab({
   templates,
+  connections,
   onLocalChange,
   onPersist,
   onDelete,
   onCreate,
 }: {
   templates: ActionTemplate[];
+  connections: IntegrationConnection[];
   onLocalChange: (next: ActionTemplate[]) => void;
   onPersist: (tpl: ActionTemplate) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -888,6 +1108,7 @@ function TemplatesTab({
           <TemplateCard
             key={tpl.id ?? tpl.action_key}
             template={tpl}
+            connections={connections}
             onChange={(next) => handleChange(tpl.id, next)}
             onDelete={tpl.is_custom ? () => handleDelete(tpl.id) : undefined}
           />
@@ -903,6 +1124,7 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("governance");
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [templates, setTemplatesState] = useState<ActionTemplate[]>(DEFAULT_TEMPLATES);
+  const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -911,6 +1133,7 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
     loadTemplates(COMPANY_ID).then(setTemplatesState).catch(console.error);
+    loadConnections(COMPANY_ID).then(setConnections).catch(console.error);
   }, []);
 
   async function persistTemplate(tpl: ActionTemplate) {
@@ -1071,6 +1294,7 @@ export default function SettingsPage() {
       {tab === "templates" && (
         <TemplatesTab
           templates={templates}
+          connections={connections}
           onLocalChange={setTemplatesState}
           onPersist={persistTemplate}
           onDelete={removeTemplate}

@@ -170,8 +170,9 @@ function ConnectForm({
 }) {
   const Icon = spec.icon;
   const [displayName, setDisplayName] = useState(existing?.display_name || spec.name);
-  // Credentials are never returned by the API (encrypted server-side), so
-  // editing an existing connection requires the user to re-enter them.
+  // Credentials are never returned by the API (encrypted server-side).
+  // The form starts empty; on edit, leaving fields blank keeps the stored
+  // credentials — entering values rotates them.
   const [credentials, setCredentials] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const f of spec.fields) {
@@ -194,12 +195,20 @@ function ConnectForm({
     setErrors([]);
   }
 
+  /** True if the user has typed at least one credential value in the form. */
+  function hasUserEnteredCredentials(): boolean {
+    return spec.fields.some((f) => (credentials[f.key] ?? "").trim() !== (f.default ?? ""));
+  }
+
   async function handleTest() {
     // Test requires a stored connection: save first if new, then test.
-    const validationErrors = validateCredentials(spec, credentials);
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
-      return;
+    const isUpdatingCreds = hasUserEnteredCredentials();
+    if (!connectionId || isUpdatingCreds) {
+      const validationErrors = validateCredentials(spec, credentials);
+      if (validationErrors.length > 0) {
+        setErrors(validationErrors);
+        return;
+      }
     }
     setErrors([]);
     setTesting(true);
@@ -209,8 +218,13 @@ function ConnectForm({
         const created = await createConnection(COMPANY_ID, spec.id, displayName, credentials);
         id = created.id;
         setConnectionId(id);
-      } else {
+      } else if (isUpdatingCreds) {
         await updateConnection(COMPANY_ID, id, { display_name: displayName, credentials });
+      } else {
+        // Existing connection, no new credentials — just update the display name if changed
+        if (existing && displayName !== existing.display_name) {
+          await updateConnection(COMPANY_ID, id, { display_name: displayName });
+        }
       }
       const result = await testStoredConnection(COMPANY_ID, id);
       setTestResult(result);
@@ -221,18 +235,22 @@ function ConnectForm({
   }
 
   async function handleSave() {
-    const validationErrors = validateCredentials(spec, credentials);
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
-      return;
+    const isUpdatingCreds = hasUserEnteredCredentials();
+    if (!connectionId || isUpdatingCreds) {
+      const validationErrors = validateCredentials(spec, credentials);
+      if (validationErrors.length > 0) {
+        setErrors(validationErrors);
+        return;
+      }
     }
     setSaving(true);
     try {
       if (connectionId) {
-        await updateConnection(COMPANY_ID, connectionId, {
+        const patch: { display_name: string; credentials?: Record<string, string> } = {
           display_name: displayName,
-          credentials,
-        });
+        };
+        if (isUpdatingCreds) patch.credentials = credentials;
+        await updateConnection(COMPANY_ID, connectionId, patch);
       } else {
         await createConnection(COMPANY_ID, spec.id, displayName, credentials);
       }
@@ -284,6 +302,89 @@ function ConnectForm({
           </div>
         </div>
 
+        {/* Stored connection status (edit mode only) */}
+        {existing && (
+          <div className="rounded-lg border border-border bg-card p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground font-semibold uppercase text-[10px]">Stored Connection</span>
+                {existing.status === "connected" && (
+                  <Badge variant="default" className="text-[10px] gap-1">
+                    <CheckCircle className="h-3 w-3" /> Connected
+                  </Badge>
+                )}
+                {existing.status === "error" && (
+                  <Badge variant="destructive" className="text-[10px] gap-1">
+                    <XCircle className="h-3 w-3" /> Error
+                  </Badge>
+                )}
+                {existing.status === "untested" && (
+                  <Badge variant="outline" className="text-[10px]">Untested</Badge>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px]"
+                disabled={testing}
+                onClick={async () => {
+                  setTesting(true);
+                  try {
+                    const r = await testStoredConnection(COMPANY_ID, existing.id);
+                    setTestResult(r);
+                  } catch (err) {
+                    setTestResult({ ok: false, message: "Test failed", detail: String(err) });
+                  }
+                  setTesting(false);
+                }}
+              >
+                {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Test Stored Credentials
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+              <div>
+                <span className="text-[10px] uppercase">Connection Name</span>
+                <div className="text-foreground">{existing.display_name}</div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase">Connection ID</span>
+                <div className="font-mono text-[10px]">{existing.id}</div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase">Last Tested</span>
+                <div className="text-foreground">
+                  {existing.last_tested_at
+                    ? new Date(existing.last_tested_at).toLocaleString()
+                    : "Never"}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase">Created</span>
+                <div className="text-foreground">{new Date(existing.created_at).toLocaleString()}</div>
+              </div>
+            </div>
+            {existing.last_error && (
+              <div className="text-red-400 text-[11px] pt-1 border-t border-border/60">
+                Last error: {existing.last_error}
+              </div>
+            )}
+            {existing.config && Object.keys(existing.config).length > 0 && (
+              <div className="pt-1 border-t border-border/60">
+                <span className="text-[10px] uppercase text-muted-foreground">Config</span>
+                <pre className="mt-1 p-2 rounded bg-muted/50 text-[10px] font-mono overflow-x-auto">
+                  {JSON.stringify(existing.config, null, 2)}
+                </pre>
+              </div>
+            )}
+            <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60">
+              <Info className="h-3 w-3 inline mr-1" />
+              Credentials are Fernet-encrypted server-side and are never returned. Leave the fields
+              below blank to keep existing credentials, or enter new values to rotate them.
+            </div>
+          </div>
+        )}
+
         {/* Deprecation / setup notes */}
         {spec.notes && (
           <div className="rounded-lg border border-yellow-400/30 bg-yellow-400/5 p-3 text-xs">
@@ -313,7 +414,9 @@ function ConnectForm({
         {/* Credential fields */}
         <div className="space-y-4 border-t border-border pt-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Credentials</h3>
+            <h3 className="text-sm font-semibold">
+              {existing ? "Rotate Credentials (optional)" : "Credentials"}
+            </h3>
             <button
               type="button"
               onClick={() => setShowSecrets((x) => !x)}
