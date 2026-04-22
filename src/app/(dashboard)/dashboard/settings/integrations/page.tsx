@@ -170,10 +170,12 @@ function ConnectForm({
 }) {
   const Icon = spec.icon;
   const [displayName, setDisplayName] = useState(existing?.display_name || spec.name);
+  // Credentials are never returned by the API (encrypted server-side), so
+  // editing an existing connection requires the user to re-enter them.
   const [credentials, setCredentials] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = existing?.credentials ? { ...existing.credentials } : {};
+    const initial: Record<string, string> = {};
     for (const f of spec.fields) {
-      if (initial[f.key] === undefined && f.default) initial[f.key] = f.default;
+      if (f.default) initial[f.key] = f.default;
     }
     return initial;
   });
@@ -378,23 +380,21 @@ function ConnectForm({
               )}
               <div className="flex-1 min-w-0">
                 <div className="font-medium">{testResult.message}</div>
-                {testResult.endpoint && (
+                {(testResult.request_method || testResult.request_url) && (
                   <div className="text-[11px] font-mono mt-1 opacity-90 break-all">
-                    {testResult.endpoint.method} {testResult.endpoint.url}
+                    {testResult.request_method} {testResult.request_url}
+                    {testResult.response_status != null && (
+                      <span className="ml-2 opacity-80">
+                        → {testResult.response_status}
+                      </span>
+                    )}
+                    {testResult.duration_ms != null && (
+                      <span className="ml-2 opacity-80">({testResult.duration_ms}ms)</span>
+                    )}
                   </div>
                 )}
                 {testResult.detail && (
                   <div className="text-xs mt-1 opacity-90">{testResult.detail}</div>
-                )}
-                {testResult.endpoint?.docsUrl && (
-                  <a
-                    href={testResult.endpoint.docsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] mt-1 underline"
-                  >
-                    Endpoint docs <ExternalLink className="h-3 w-3" />
-                  </a>
                 )}
               </div>
             </div>

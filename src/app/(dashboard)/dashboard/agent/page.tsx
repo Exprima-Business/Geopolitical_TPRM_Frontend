@@ -381,7 +381,7 @@ function RunResultPanel({
 /* ── Matched Playbook Block ─────────────────────────────── */
 
 function TemplatePlaybookBlock({ template }: { template: ActionTemplate }) {
-  const Icon = TEMPLATE_ICONS[template.action] ?? BookOpen;
+  const Icon = TEMPLATE_ICONS[template.action_key] ?? BookOpen;
   return (
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
       <div className="flex items-start gap-2">
