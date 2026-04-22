@@ -491,11 +491,13 @@ function AlertsTab({
 function TemplateCard({
   template,
   connections,
+  saveState,
   onChange,
   onDelete,
 }: {
   template: ActionTemplate;
   connections: IntegrationConnection[];
+  saveState?: "saving" | "saved" | "error";
   onChange: (next: ActionTemplate) => void;
   onDelete?: () => void;
 }) {
@@ -503,6 +505,10 @@ function TemplateCard({
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [newStep, setNewStep] = useState("");
   const [newRisk, setNewRisk] = useState("");
+  // Per-step textarea buffer so partial / invalid JSON doesn't get clobbered
+  // by the round-trip through JSON.stringify on every render.
+  const [paramsBuffers, setParamsBuffers] = useState<Record<number, string>>({});
+  const [paramsErrors, setParamsErrors] = useState<Record<number, string>>({});
   const Icon = TEMPLATE_ICONS[template.action_key] ?? BookOpen;
 
   // Sensible default for a new step: pick the first configured connection and
@@ -547,7 +553,22 @@ function TemplateCard({
               <span>{template.steps.length} steps · {template.risks.length} risks</span>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {saveState === "saving" && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+              </span>
+            )}
+            {saveState === "saved" && (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                <CheckCircle className="h-3 w-3" /> Saved
+              </span>
+            )}
+            {saveState === "error" && (
+              <span className="flex items-center gap-1 text-[10px] text-red-400">
+                <AlertTriangle className="h-3 w-3" /> Save failed
+              </span>
+            )}
             <button
               type="button"
               role="switch"
@@ -820,23 +841,47 @@ function TemplateCard({
                               Params (JSON, supports {"{{event.title}}"}, {"{{asset.name}}"}, etc.)
                             </label>
                             <textarea
-                              className="flex w-full rounded-md border border-input bg-transparent px-2 py-1 text-[11px] font-mono min-h-[72px]"
-                              value={JSON.stringify(step.params_template ?? {}, null, 2)}
+                              className="flex w-full rounded-md border border-input bg-transparent px-2 py-1 text-[11px] font-mono min-h-[96px]"
+                              value={
+                                paramsBuffers[i] ??
+                                JSON.stringify(step.params_template ?? {}, null, 2)
+                              }
                               onChange={(e) => {
-                                const steps = [...template.steps];
+                                const text = e.target.value;
+                                setParamsBuffers((prev) => ({ ...prev, [i]: text }));
                                 try {
-                                  steps[i] = {
-                                    ...steps[i],
-                                    params_template: e.target.value
-                                      ? JSON.parse(e.target.value)
-                                      : {},
-                                  };
+                                  const parsed = text.trim() ? JSON.parse(text) : {};
+                                  setParamsErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[i];
+                                    return next;
+                                  });
+                                  const steps = [...template.steps];
+                                  steps[i] = { ...steps[i], params_template: parsed };
                                   onChange({ ...template, steps });
-                                } catch {
-                                  // Ignore invalid JSON while typing
+                                } catch (err) {
+                                  setParamsErrors((prev) => ({
+                                    ...prev,
+                                    [i]: (err as Error).message,
+                                  }));
                                 }
                               }}
+                              onBlur={() => {
+                                // On blur, if the buffer still parses, clear it so the
+                                // textarea re-syncs with the stored value (which may have
+                                // been reformatted by a save roundtrip).
+                                setParamsBuffers((prev) => {
+                                  const next = { ...prev };
+                                  delete next[i];
+                                  return next;
+                                });
+                              }}
                             />
+                            {paramsErrors[i] && (
+                              <p className="text-[10px] text-red-400 mt-1">
+                                Invalid JSON: {paramsErrors[i]}
+                              </p>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
@@ -998,6 +1043,7 @@ function TemplateCard({
 function TemplatesTab({
   templates,
   connections,
+  saveStatus,
   onLocalChange,
   onPersist,
   onDelete,
@@ -1005,6 +1051,7 @@ function TemplatesTab({
 }: {
   templates: ActionTemplate[];
   connections: IntegrationConnection[];
+  saveStatus: Record<string, "saving" | "saved" | "error">;
   onLocalChange: (next: ActionTemplate[]) => void;
   onPersist: (tpl: ActionTemplate) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -1109,6 +1156,7 @@ function TemplatesTab({
             key={tpl.id ?? tpl.action_key}
             template={tpl}
             connections={connections}
+            saveState={tpl.id ? saveStatus[tpl.id] : undefined}
             onChange={(next) => handleChange(tpl.id, next)}
             onDelete={tpl.is_custom ? () => handleDelete(tpl.id) : undefined}
           />
@@ -1125,6 +1173,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [templates, setTemplatesState] = useState<ActionTemplate[]>(DEFAULT_TEMPLATES);
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
+  const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1138,6 +1187,7 @@ export default function SettingsPage() {
 
   async function persistTemplate(tpl: ActionTemplate) {
     if (!tpl.id) return;
+    setSaveStatus((prev) => ({ ...prev, [tpl.id!]: "saving" }));
     try {
       const next = await updateTemplate(COMPANY_ID, tpl.id, {
         name: tpl.name,
@@ -1151,8 +1201,18 @@ export default function SettingsPage() {
         steps: tpl.steps,
       });
       setTemplatesState((prev) => prev.map((t) => (t.id === next.id ? next : t)));
+      setSaveStatus((prev) => ({ ...prev, [tpl.id!]: "saved" }));
+      setTimeout(() => {
+        setSaveStatus((prev) => {
+          if (prev[tpl.id!] !== "saved") return prev;
+          const n = { ...prev };
+          delete n[tpl.id!];
+          return n;
+        });
+      }, 2000);
     } catch (err) {
       console.error("Failed to save template:", err);
+      setSaveStatus((prev) => ({ ...prev, [tpl.id!]: "error" }));
     }
   }
 
@@ -1295,6 +1355,7 @@ export default function SettingsPage() {
         <TemplatesTab
           templates={templates}
           connections={connections}
+          saveStatus={saveStatus}
           onLocalChange={setTemplatesState}
           onPersist={persistTemplate}
           onDelete={removeTemplate}
