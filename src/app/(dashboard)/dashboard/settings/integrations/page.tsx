@@ -184,6 +184,9 @@ function ConnectForm({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [saving, setSaving] = useState(false);
+  // Tracks the stored connection id so Test-then-Save (or Test twice)
+  // updates the same record instead of trying to create duplicates.
+  const [connectionId, setConnectionId] = useState<string | undefined>(existing?.id);
 
   function setField(key: string, value: string) {
     setCredentials((prev) => ({ ...prev, [key]: value }));
@@ -201,14 +204,15 @@ function ConnectForm({
     setErrors([]);
     setTesting(true);
     try {
-      let connectionId = existing?.id;
-      if (!connectionId) {
+      let id = connectionId;
+      if (!id) {
         const created = await createConnection(COMPANY_ID, spec.id, displayName, credentials);
-        connectionId = created.id;
+        id = created.id;
+        setConnectionId(id);
       } else {
-        await updateConnection(COMPANY_ID, connectionId, { display_name: displayName, credentials });
+        await updateConnection(COMPANY_ID, id, { display_name: displayName, credentials });
       }
-      const result = await testStoredConnection(COMPANY_ID, connectionId);
+      const result = await testStoredConnection(COMPANY_ID, id);
       setTestResult(result);
     } catch (err) {
       setTestResult({ ok: false, message: "Test failed", detail: String(err) });
@@ -224,8 +228,8 @@ function ConnectForm({
     }
     setSaving(true);
     try {
-      if (existing) {
-        await updateConnection(COMPANY_ID, existing.id, {
+      if (connectionId) {
+        await updateConnection(COMPANY_ID, connectionId, {
           display_name: displayName,
           credentials,
         });
