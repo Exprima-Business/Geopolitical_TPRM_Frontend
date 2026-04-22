@@ -14,16 +14,62 @@ import {
   LogOut,
   Globe,
   Settings,
+  Plug,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/assets", label: "Assets", icon: MapPin },
-  { href: "/dashboard/risks", label: "Risk Events", icon: AlertTriangle },
-  { href: "/dashboard/mitigations", label: "Mitigations", icon: Shield },
-  { href: "/dashboard/agent", label: "AI Agent", icon: Bot },
-  { href: "/dashboard/settings/connectors", label: "Connectors", icon: Network },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    exact: true,
+    tooltip: "Live risk map, filters, and recent event feed.",
+  },
+  {
+    href: "/dashboard/assets",
+    label: "Assets",
+    icon: MapPin,
+    tooltip: "Your monitored infrastructure — cloud resources, offices, vendors, and third parties.",
+  },
+  {
+    href: "/dashboard/risks",
+    label: "Risk Events",
+    icon: AlertTriangle,
+    tooltip: "Geopolitical events ingested from GDELT every 15 minutes, scored for severity.",
+  },
+  {
+    href: "/dashboard/mitigations",
+    label: "Mitigations",
+    icon: Shield,
+    tooltip: "Approved actions and their execution status.",
+  },
+  {
+    href: "/dashboard/agent",
+    label: "AI Agent",
+    icon: Bot,
+    tooltip: "Autonomous risk assessment — the agent proposes and executes mitigations.",
+  },
+  {
+    href: "/dashboard/settings/connectors",
+    label: "Connectors",
+    icon: Network,
+    tooltip:
+      "Asset discovery — pull your inventory inbound from AWS, Azure, GCP, or a ServiceNow CMDB.",
+  },
+  {
+    href: "/dashboard/settings/integrations",
+    label: "Integrations",
+    icon: Plug,
+    tooltip:
+      "Action dispatch — push outbound alerts, tickets, and changes to Slack, ServiceNow, PagerDuty, etc.",
+  },
+  {
+    href: "/dashboard/settings",
+    label: "Settings",
+    icon: Settings,
+    exact: true,
+    tooltip: "Agent governance, playbook templates, and alert thresholds.",
+  },
 ];
 
 export function Sidebar() {
@@ -48,11 +94,14 @@ export function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const isActive = item.exact
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
               href={item.href}
+              title={item.tooltip}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                 isActive
