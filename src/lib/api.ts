@@ -103,5 +103,51 @@ export const api = {
           body: JSON.stringify(data),
         }),
     },
+    integrations: {
+      list: () => request<unknown>(`/api/v1/companies/${companyId}/integrations`),
+      create: (data: unknown) =>
+        request<unknown>(`/api/v1/companies/${companyId}/integrations`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (connectionId: string, data: unknown) =>
+        request<unknown>(`/api/v1/companies/${companyId}/integrations/${connectionId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (connectionId: string) =>
+        request<unknown>(`/api/v1/companies/${companyId}/integrations/${connectionId}`, {
+          method: "DELETE",
+        }),
+      test: (connectionId: string) =>
+        request<unknown>(`/api/v1/companies/${companyId}/integrations/${connectionId}/test`, {
+          method: "POST",
+        }),
+    },
+    actionTemplates: {
+      list: () => request<unknown>(`/api/v1/companies/${companyId}/action-templates`),
+      create: (data: unknown) =>
+        request<unknown>(`/api/v1/companies/${companyId}/action-templates`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (templateId: string, data: unknown) =>
+        request<unknown>(`/api/v1/companies/${companyId}/action-templates/${templateId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (templateId: string) =>
+        request<unknown>(`/api/v1/companies/${companyId}/action-templates/${templateId}`, {
+          method: "DELETE",
+        }),
+    },
+    executions: {
+      list: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return request<unknown>(`/api/v1/companies/${companyId}/executions${qs}`);
+      },
+      get: (executionId: string) =>
+        request<unknown>(`/api/v1/companies/${companyId}/executions/${executionId}`),
+    },
   }),
 };

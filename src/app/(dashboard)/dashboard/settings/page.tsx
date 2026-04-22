@@ -13,10 +13,13 @@ import {
 } from "lucide-react";
 import {
   type ActionTemplate,
+  type TemplateStep,
   DEFAULT_TEMPLATES,
   TEMPLATE_ICONS,
   loadTemplates,
-  saveTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
   resetTemplates,
 } from "@/lib/action-templates";
 
@@ -492,10 +495,20 @@ function TemplateCard({
   const [expanded, setExpanded] = useState(false);
   const [newStep, setNewStep] = useState("");
   const [newRisk, setNewRisk] = useState("");
-  const Icon = TEMPLATE_ICONS[template.action] ?? BookOpen;
+  const Icon = TEMPLATE_ICONS[template.action_key] ?? BookOpen;
+
+  const makeStep = (label: string): TemplateStep => ({
+    step_order: template.steps.length,
+    label,
+    integration_id: "webhook",
+    action_key: "send_payload",
+    params_template: {},
+    required: false,
+    timeout_seconds: 30,
+  });
 
   return (
-    <Card className={!template.enabled ? "opacity-60" : ""}>
+    <Card className={!template.is_enabled ? "opacity-60" : ""}>
       <CardContent className="p-4 space-y-3">
         {/* Header row */}
         <div className="flex items-start gap-3">
@@ -505,7 +518,7 @@ function TemplateCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-medium text-sm">{template.name}</h3>
-              {template.custom && (
+              {template.is_custom && (
                 <Badge variant="outline" className="text-[10px]">Custom</Badge>
               )}
               <Badge variant="secondary" className="text-[10px]">
@@ -523,16 +536,16 @@ function TemplateCard({
             <button
               type="button"
               role="switch"
-              aria-checked={template.enabled}
-              onClick={() => onChange({ ...template, enabled: !template.enabled })}
+              aria-checked={template.is_enabled}
+              onClick={() => onChange({ ...template, is_enabled: !template.is_enabled })}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                template.enabled ? "bg-primary" : "bg-muted"
+                template.is_enabled ? "bg-primary" : "bg-muted"
               }`}
-              aria-label={template.enabled ? "Disable template" : "Enable template"}
+              aria-label={template.is_enabled ? "Disable template" : "Enable template"}
             >
               <span
                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                  template.enabled ? "translate-x-5" : "translate-x-0"
+                  template.is_enabled ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
@@ -623,10 +636,10 @@ function TemplateCard({
                     </span>
                     <Input
                       className="h-8 text-xs"
-                      value={step}
+                      value={step.label}
                       onChange={(e) => {
                         const steps = [...template.steps];
-                        steps[i] = e.target.value;
+                        steps[i] = { ...steps[i], label: e.target.value };
                         onChange({ ...template, steps });
                       }}
                     />
@@ -634,7 +647,9 @@ function TemplateCard({
                       onClick={() =>
                         onChange({
                           ...template,
-                          steps: template.steps.filter((_, idx) => idx !== i),
+                          steps: template.steps
+                            .filter((_, idx) => idx !== i)
+                            .map((s, idx) => ({ ...s, step_order: idx })),
                         })
                       }
                       className="text-muted-foreground hover:text-red-400 p-1.5 shrink-0"
@@ -653,7 +668,10 @@ function TemplateCard({
                   onChange={(e) => setNewStep(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && newStep.trim()) {
-                      onChange({ ...template, steps: [...template.steps, newStep.trim()] });
+                      onChange({
+                        ...template,
+                        steps: [...template.steps, makeStep(newStep.trim())],
+                      });
                       setNewStep("");
                     }
                   }}
@@ -664,7 +682,10 @@ function TemplateCard({
                   className="h-8 text-xs"
                   disabled={!newStep.trim()}
                   onClick={() => {
-                    onChange({ ...template, steps: [...template.steps, newStep.trim()] });
+                    onChange({
+                      ...template,
+                      steps: [...template.steps, makeStep(newStep.trim())],
+                    });
                     setNewStep("");
                   }}
                 >
@@ -737,7 +758,7 @@ function TemplateCard({
               </div>
             </div>
 
-            {template.custom && onDelete && (
+            {template.is_custom && onDelete && (
               <div className="flex justify-end pt-2 border-t border-border">
                 <Button
                   variant="destructive"
@@ -758,29 +779,37 @@ function TemplateCard({
 
 function TemplatesTab({
   templates,
-  setTemplates,
+  onLocalChange,
+  onPersist,
+  onDelete,
+  onCreate,
 }: {
   templates: ActionTemplate[];
-  setTemplates: (t: ActionTemplate[]) => void;
+  onLocalChange: (next: ActionTemplate[]) => void;
+  onPersist: (tpl: ActionTemplate) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onCreate: (tpl: ActionTemplate) => Promise<void>;
 }) {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAction, setNewAction] = useState("");
 
-  function updateTemplate(id: string, next: ActionTemplate) {
-    setTemplates(templates.map((t) => (t.id === id ? next : t)));
+  function handleChange(id: string | undefined, next: ActionTemplate) {
+    onLocalChange(templates.map((t) => (t.id === id ? next : t)));
+    if (id) void onPersist(next);
   }
 
-  function deleteTemplate(id: string) {
-    setTemplates(templates.filter((t) => t.id !== id));
+  function handleDelete(id: string | undefined) {
+    if (!id) return;
+    onLocalChange(templates.filter((t) => t.id !== id));
+    void onDelete(id);
   }
 
   function addCustom() {
     const action = newAction.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
     if (!newName.trim() || !action) return;
     const tpl: ActionTemplate = {
-      id: `tpl_custom_${Date.now()}`,
-      action,
+      action_key: action,
       name: newName.trim(),
       description: "Custom action template.",
       severity_min: 5,
@@ -789,16 +818,16 @@ function TemplatesTab({
       required_roles: [],
       steps: [],
       risks: [],
-      enabled: true,
-      custom: true,
+      is_enabled: true,
+      is_custom: true,
     };
-    setTemplates([...templates, tpl]);
+    void onCreate(tpl);
     setNewName("");
     setNewAction("");
     setShowNewForm(false);
   }
 
-  const enabledCount = templates.filter((t) => t.enabled).length;
+  const enabledCount = templates.filter((t) => t.is_enabled).length;
 
   return (
     <div className="space-y-4">
@@ -857,10 +886,10 @@ function TemplatesTab({
       <div className="space-y-3">
         {templates.map((tpl) => (
           <TemplateCard
-            key={tpl.id}
+            key={tpl.id ?? tpl.action_key}
             template={tpl}
-            onChange={(next) => updateTemplate(tpl.id, next)}
-            onDelete={tpl.custom ? () => deleteTemplate(tpl.id) : undefined}
+            onChange={(next) => handleChange(tpl.id, next)}
+            onDelete={tpl.is_custom ? () => handleDelete(tpl.id) : undefined}
           />
         ))}
       </div>
@@ -881,16 +910,52 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettings();
-    setTemplatesState(loadTemplates(COMPANY_ID));
+    loadTemplates(COMPANY_ID).then(setTemplatesState).catch(console.error);
   }, []);
 
-  function updateTemplates(next: ActionTemplate[]) {
-    setTemplatesState(next);
-    saveTemplates(COMPANY_ID, next);
+  async function persistTemplate(tpl: ActionTemplate) {
+    if (!tpl.id) return;
+    try {
+      const next = await updateTemplate(COMPANY_ID, tpl.id, {
+        name: tpl.name,
+        description: tpl.description,
+        severity_min: tpl.severity_min,
+        severity_max: tpl.severity_max,
+        estimated_duration: tpl.estimated_duration,
+        required_roles: tpl.required_roles,
+        risks: tpl.risks,
+        is_enabled: tpl.is_enabled,
+        steps: tpl.steps,
+      });
+      setTemplatesState((prev) => prev.map((t) => (t.id === next.id ? next : t)));
+    } catch (err) {
+      console.error("Failed to save template:", err);
+    }
   }
 
-  function resetTemplatesToDefaults() {
-    setTemplatesState(resetTemplates(COMPANY_ID));
+  async function createNewTemplate(tpl: ActionTemplate) {
+    try {
+      const created = await createTemplate(COMPANY_ID, tpl);
+      setTemplatesState((prev) => [...prev, created]);
+    } catch (err) {
+      console.error("Failed to create template:", err);
+    }
+  }
+
+  async function removeTemplate(id: string) {
+    try {
+      await deleteTemplate(COMPANY_ID, id);
+    } catch (err) {
+      console.error("Failed to delete template:", err);
+    }
+  }
+
+  async function resetTemplatesToDefaults() {
+    try {
+      setTemplatesState(await resetTemplates(COMPANY_ID));
+    } catch (err) {
+      console.error("Failed to reset templates:", err);
+    }
   }
 
   async function loadSettings() {
@@ -1003,7 +1068,15 @@ export default function SettingsPage() {
 
       {/* Tab Content */}
       {tab === "governance" && <GovernanceTab settings={settings} update={update} />}
-      {tab === "templates" && <TemplatesTab templates={templates} setTemplates={updateTemplates} />}
+      {tab === "templates" && (
+        <TemplatesTab
+          templates={templates}
+          onLocalChange={setTemplatesState}
+          onPersist={persistTemplate}
+          onDelete={removeTemplate}
+          onCreate={createNewTemplate}
+        />
+      )}
       {tab === "alerts" && <AlertsTab settings={settings} update={update} />}
     </div>
   );

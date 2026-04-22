@@ -1,22 +1,27 @@
 /**
- * Connection storage + simulated connection test.
+ * Integration connection API client.
  *
- * Test messages reference the real endpoint (method, path, absoluteUrl) that
- * a backend executor would actually call. The simulation is intentionally
- * thin — it validates required fields + regex patterns and returns the
- * provider-specific endpoint spec so the UI can show a faithful trace.
+ * Thin wrapper around the backend endpoints at /api/v1/companies/{id}/integrations.
+ * Credentials are encrypted server-side (Fernet) and never returned.
+ *
+ * The `testConnection` helper calls the backend adapter which actually hits
+ * the provider's real API (ServiceNow /sys_user, Jira /myself, STS
+ * GetCallerIdentity, etc.) using the decrypted credentials.
  */
 
 import type { IntegrationSpec, EndpointSpec } from "./integrations";
 import { findIntegration, resolveBaseUrl } from "./integrations";
+import { api } from "./api";
 
 export type ConnectionStatus = "connected" | "error" | "untested";
 
 export interface IntegrationConnection {
   id: string;
+  company_id: string;
   integration_id: string;
   display_name: string;
-  credentials: Record<string, string>;
+  config: Record<string, unknown> | null;
+  is_enabled: boolean;
   status: ConnectionStatus;
   last_tested_at: string | null;
   last_error: string | null;
@@ -24,78 +29,68 @@ export interface IntegrationConnection {
   updated_at: string;
 }
 
-const STORAGE_KEY_PREFIX = "tprm:integration_connections:";
-
-function storageKey(companyId: string): string {
-  return `${STORAGE_KEY_PREFIX}${companyId}`;
+export interface TestResult {
+  ok: boolean;
+  message: string;
+  detail?: string | null;
+  request_method?: string | null;
+  request_url?: string | null;
+  response_status?: number | null;
+  duration_ms?: number | null;
 }
 
-export function loadConnections(companyId: string): IntegrationConnection[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(storageKey(companyId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as IntegrationConnection[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+export async function loadConnections(companyId: string): Promise<IntegrationConnection[]> {
+  const data = await api.companies(companyId).integrations.list();
+  return Array.isArray(data) ? (data as IntegrationConnection[]) : [];
 }
 
-export function saveConnections(
-  companyId: string,
-  connections: IntegrationConnection[]
-): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(storageKey(companyId), JSON.stringify(connections));
-}
-
-export function createConnection(
+export async function createConnection(
   companyId: string,
   integrationId: string,
   displayName: string,
-  credentials: Record<string, string>
-): IntegrationConnection {
-  const now = new Date().toISOString();
-  const connection: IntegrationConnection = {
-    id: `conn_${Date.now()}`,
+  credentials: Record<string, string>,
+  config: Record<string, unknown> | null = null
+): Promise<IntegrationConnection> {
+  return (await api.companies(companyId).integrations.create({
     integration_id: integrationId,
     display_name: displayName,
     credentials,
-    status: "untested",
-    last_tested_at: null,
-    last_error: null,
-    created_at: now,
-    updated_at: now,
-  };
-  const existing = loadConnections(companyId);
-  saveConnections(companyId, [...existing, connection]);
-  return connection;
+    config,
+  })) as IntegrationConnection;
 }
 
-export function updateConnection(
+export async function updateConnection(
   companyId: string,
-  id: string,
-  patch: Partial<IntegrationConnection>
-): IntegrationConnection | null {
-  const connections = loadConnections(companyId);
-  const idx = connections.findIndex((c) => c.id === id);
-  if (idx === -1) return null;
-  const next: IntegrationConnection = {
-    ...connections[idx],
-    ...patch,
-    updated_at: new Date().toISOString(),
-  };
-  connections[idx] = next;
-  saveConnections(companyId, connections);
-  return next;
+  connectionId: string,
+  patch: {
+    display_name?: string;
+    credentials?: Record<string, string>;
+    config?: Record<string, unknown> | null;
+    is_enabled?: boolean;
+  }
+): Promise<IntegrationConnection> {
+  return (await api
+    .companies(companyId)
+    .integrations.update(connectionId, patch)) as IntegrationConnection;
 }
 
-export function deleteConnection(companyId: string, id: string): void {
-  const connections = loadConnections(companyId);
-  saveConnections(companyId, connections.filter((c) => c.id !== id));
+export async function deleteConnection(companyId: string, connectionId: string): Promise<void> {
+  await api.companies(companyId).integrations.delete(connectionId);
 }
 
+/** Call the backend's POST /integrations/{id}/test — hits the real provider API. */
+export async function testStoredConnection(
+  companyId: string,
+  connectionId: string
+): Promise<TestResult> {
+  return (await api.companies(companyId).integrations.test(connectionId)) as TestResult;
+}
+
+/**
+ * Local credential-shape validation (required fields, regex patterns, email format).
+ * Runs client-side before sending the Create/Update request so the user sees
+ * field errors without a round trip.
+ */
 export function validateCredentials(
   spec: IntegrationSpec,
   credentials: Record<string, string>
@@ -140,122 +135,4 @@ export function resolveEndpointUrl(
   if (!base) return path;
   if (!path) return base;
   return path.startsWith("/") ? `${base}${path}` : `${base}/${path}`;
-}
-
-export interface TestResult {
-  ok: boolean;
-  /** Short human-readable status. */
-  message: string;
-  /** Longer detail, ideally including the endpoint that would be called. */
-  detail?: string;
-  /** The endpoint that would be / was called. */
-  endpoint?: { method: string; url: string; docsUrl: string };
-}
-
-/**
- * Simulated connection test.
- *
- * This does NOT make network calls from the browser — that would be blocked
- * by CORS and would leak credentials. In production, this call forwards to a
- * backend executor that calls `testEndpoint` server-side with credentials
- * decrypted from storage. The frontend-only simulation here:
- *
- *  1. Validates required fields and regex patterns.
- *  2. Resolves the real endpoint (method, URL) per the spec.
- *  3. Returns a result that references that endpoint, so the UI shows a
- *     faithful trace of what the backend would do.
- */
-export async function testConnection(
-  integrationId: string,
-  credentials: Record<string, string>
-): Promise<TestResult> {
-  const spec = findIntegration(integrationId);
-  if (!spec) return { ok: false, message: "Unknown integration" };
-
-  const errors = validateCredentials(spec, credentials);
-  if (errors.length > 0) {
-    return { ok: false, message: "Invalid credentials", detail: errors.join("; ") };
-  }
-
-  await new Promise((r) => setTimeout(r, 500 + Math.random() * 700));
-
-  if (!spec.testEndpoint) {
-    return {
-      ok: true,
-      message: "Credentials valid (no test endpoint defined)",
-      detail: "This provider has no side-effect-free probe; credentials will be validated on first use.",
-    };
-  }
-
-  const url = resolveEndpointUrl(spec, spec.testEndpoint, credentials);
-  const endpointInfo = {
-    method: spec.testEndpoint.method,
-    url,
-    docsUrl: spec.testEndpoint.docsUrl,
-  };
-
-  // Provider-specific success messaging. These reference documented response
-  // codes / bodies for the actual test endpoint called above.
-  const providerMessage: Record<string, { message: string; detail: string }> = {
-    slack: {
-      message: "Webhook reachable (simulated)",
-      detail: `POST ${url} with { text: "TPRM connection test" } → Slack returns 200 "ok".`,
-    },
-    teams: {
-      message: "Workflows webhook reachable (simulated)",
-      detail: `POST ${url} with a minimal Adaptive Card → Azure Logic Apps returns 202 Accepted.`,
-    },
-    sendgrid: {
-      message: "API key valid (simulated)",
-      detail: `GET ${url} → returns 200 with JSON array of scopes (e.g. ["mail.send"]).`,
-    },
-    smtp: {
-      message: "SMTP handshake successful (simulated)",
-      detail: `EHLO ${credentials.host || "<host>"}:${credentials.port || "587"} → STARTTLS → AUTH PLAIN → QUIT. RFC 5321 / RFC 3207.`,
-    },
-    servicenow: {
-      message: "Instance reachable (simulated)",
-      detail: `GET ${url} → returns 200 with one sys_user record. Validates Basic auth.`,
-    },
-    jira: {
-      message: "Authentication successful (simulated)",
-      detail: `GET ${url} → returns 200 with the current user's Atlassian account details.`,
-    },
-    pagerduty: {
-      message: "Routing key accepted (simulated)",
-      detail: `POST ${url} with { routing_key, event_action: "resolve", dedup_key } → returns 202 Accepted. No visible incident created.`,
-    },
-    salesforce: {
-      message: "OAuth token obtained (simulated)",
-      detail: `POST ${url} (grant_type=password) → returns 200 with { access_token, instance_url, ... }.`,
-    },
-    okta: {
-      message: "API token valid (simulated)",
-      detail: `GET ${url} → returns 200 with an array containing one User object.`,
-    },
-    aws: {
-      message: "SigV4 identity confirmed (simulated)",
-      detail: `POST ${url} (Action=GetCallerIdentity) → returns <GetCallerIdentityResult> XML with the account ID and ARN.`,
-    },
-    azure: {
-      message: "Azure AD token obtained (simulated)",
-      detail: `POST ${url} (grant_type=client_credentials, scope=https://management.azure.com/.default) → returns 200 with { access_token, expires_in }.`,
-    },
-    webhook: {
-      message: "Endpoint reachable (simulated)",
-      detail: `POST ${url} with { test: true } → any 2xx response is treated as success.`,
-    },
-  };
-
-  const info = providerMessage[integrationId] ?? {
-    message: "Connection succeeded (simulated)",
-    detail: `${spec.testEndpoint.method} ${url}`,
-  };
-
-  return {
-    ok: true,
-    message: info.message,
-    detail: info.detail,
-    endpoint: endpointInfo,
-  };
 }

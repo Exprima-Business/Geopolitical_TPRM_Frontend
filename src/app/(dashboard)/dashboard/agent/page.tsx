@@ -419,7 +419,7 @@ function TemplatePlaybookBlock({ template }: { template: ActionTemplate }) {
             {template.steps.map((step, i) => (
               <li key={i} className="flex gap-2 text-xs">
                 <span className="text-muted-foreground font-mono w-4 shrink-0">{i + 1}.</span>
-                <span>{step}</span>
+                <span>{step.label}</span>
               </li>
             ))}
           </ol>
@@ -587,7 +587,7 @@ export default function AgentPage() {
 
   useEffect(() => {
     loadData();
-    setTemplates(loadTemplates(COMPANY_ID));
+    loadTemplates(COMPANY_ID).then(setTemplates).catch(console.error);
     api.riskEvents.active().then((data) => {
       const events = data as RiskEvent[];
       setActiveEvents(events);

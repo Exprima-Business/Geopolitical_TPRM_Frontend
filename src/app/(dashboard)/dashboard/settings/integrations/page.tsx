@@ -24,7 +24,7 @@ import {
   updateConnection,
   deleteConnection,
   validateCredentials,
-  testConnection,
+  testStoredConnection,
   resolveEndpointUrl,
   type IntegrationConnection,
   type TestResult,
@@ -190,6 +190,7 @@ function ConnectForm({
   }
 
   async function handleTest() {
+    // Test requires a stored connection: save first if new, then test.
     const validationErrors = validateCredentials(spec, credentials);
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
@@ -197,8 +198,19 @@ function ConnectForm({
     }
     setErrors([]);
     setTesting(true);
-    const result = await testConnection(spec.id, credentials);
-    setTestResult(result);
+    try {
+      let connectionId = existing?.id;
+      if (!connectionId) {
+        const created = await createConnection(COMPANY_ID, spec.id, displayName, credentials);
+        connectionId = created.id;
+      } else {
+        await updateConnection(COMPANY_ID, connectionId, { display_name: displayName, credentials });
+      }
+      const result = await testStoredConnection(COMPANY_ID, connectionId);
+      setTestResult(result);
+    } catch (err) {
+      setTestResult({ ok: false, message: "Test failed", detail: String(err) });
+    }
     setTesting(false);
   }
 
@@ -209,31 +221,20 @@ function ConnectForm({
       return;
     }
     setSaving(true);
-    let result = testResult;
-    if (!result) {
-      result = await testConnection(spec.id, credentials);
-      setTestResult(result);
-    }
-    const status = result.ok ? "connected" : "error";
-    const lastError = result.ok ? null : result.detail || result.message;
-    if (existing) {
-      updateConnection(COMPANY_ID, existing.id, {
-        display_name: displayName,
-        credentials,
-        status,
-        last_tested_at: new Date().toISOString(),
-        last_error: lastError,
-      });
-    } else {
-      const conn = createConnection(COMPANY_ID, spec.id, displayName, credentials);
-      updateConnection(COMPANY_ID, conn.id, {
-        status,
-        last_tested_at: new Date().toISOString(),
-        last_error: lastError,
-      });
+    try {
+      if (existing) {
+        await updateConnection(COMPANY_ID, existing.id, {
+          display_name: displayName,
+          credentials,
+        });
+      } else {
+        await createConnection(COMPANY_ID, spec.id, displayName, credentials);
+      }
+      onSaved();
+    } catch (err) {
+      setErrors([String(err)]);
     }
     setSaving(false);
-    onSaved();
   }
 
   return (
@@ -554,29 +555,32 @@ export default function IntegrationsPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
-    setConnections(loadConnections(COMPANY_ID));
+    loadConnections(COMPANY_ID).then(setConnections).catch(console.error);
   }, []);
 
-  function refresh() {
-    setConnections(loadConnections(COMPANY_ID));
+  async function refresh() {
+    try {
+      setConnections(await loadConnections(COMPANY_ID));
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async function handleTest(conn: IntegrationConnection) {
     setTestingId(conn.id);
-    const result = await testConnection(conn.integration_id, conn.credentials);
-    updateConnection(COMPANY_ID, conn.id, {
-      status: result.ok ? "connected" : "error",
-      last_tested_at: new Date().toISOString(),
-      last_error: result.ok ? null : result.detail || result.message,
-    });
-    refresh();
+    try {
+      await testStoredConnection(COMPANY_ID, conn.id);
+    } catch (err) {
+      console.error(err);
+    }
+    await refresh();
     setTestingId(null);
   }
 
-  function handleDelete(conn: IntegrationConnection) {
+  async function handleDelete(conn: IntegrationConnection) {
     if (!confirm(`Delete connection "${conn.display_name}"? This cannot be undone.`)) return;
-    deleteConnection(COMPANY_ID, conn.id);
-    refresh();
+    await deleteConnection(COMPANY_ID, conn.id);
+    await refresh();
   }
 
   const connectedByIntegration = useMemo(() => {
@@ -743,12 +747,11 @@ export default function IntegrationsPage() {
       <Card>
         <CardContent className="p-4">
           <div className="flex items-start gap-2 text-xs text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-400" />
+            <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-emerald-400" />
             <div>
-              <strong className="text-foreground">Demo mode:</strong> Connection tests and playbook
-              executions are currently simulated on the frontend. Credentials are stored in your
-              browser&apos;s localStorage. A backend executor is required to actually reach
-              third-party systems with these credentials.
+              <strong className="text-foreground">Live mode:</strong> Credentials are Fernet-encrypted
+              server-side. Connection tests and playbook executions hit the real provider APIs
+              shown in the endpoint list above — no mocks.
             </div>
           </div>
         </CardContent>
