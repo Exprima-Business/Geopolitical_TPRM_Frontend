@@ -2,24 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Mitigation } from "@/types";
 import { Shield } from "lucide-react";
 
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
-
 export default function MitigationsPage() {
+  const { companyId } = useCompany();
   const [mitigations, setMitigations] = useState<Mitigation[]>([]);
 
   useEffect(() => {
-    api.companies(COMPANY_ID).mitigations.list()
+    api.companies(companyId).mitigations.list()
       .then((data) => {
         const result = data as { items?: Mitigation[] } | Mitigation[];
         setMitigations(Array.isArray(result) ? result : result.items || []);
       })
       .catch(console.error);
-  }, []);
+  }, [companyId]);
 
   return (
     <div className="p-6 space-y-6">

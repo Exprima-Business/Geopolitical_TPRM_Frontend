@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +22,6 @@ import {
   BarChart3, Target, Info, BookOpen, Users, Gauge,
   Lightbulb, TrendingUp,
 } from "lucide-react";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 /* ── Reasoning parser ───────────────────────────────────── */
 
@@ -853,6 +852,7 @@ function ExecutionStatusBadge({ status }: { status: ActionExecution["status"] })
 }
 
 function ExecutionsPanel({ decisionId }: { decisionId: string }) {
+  const { companyId } = useCompany();
   const [executions, setExecutions] = useState<ActionExecution[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -860,7 +860,7 @@ function ExecutionsPanel({ decisionId }: { decisionId: string }) {
     let cancelled = false;
     setLoading(true);
     api
-      .companies(COMPANY_ID)
+      .companies(companyId)
       .executions.list({ agent_decision_id: decisionId, page_size: "50" })
       .then((data) => {
         if (cancelled) return;
@@ -876,7 +876,7 @@ function ExecutionsPanel({ decisionId }: { decisionId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [decisionId]);
+  }, [companyId, decisionId]);
 
   if (loading) {
     return (
@@ -1098,6 +1098,7 @@ function DecisionCard({
 /* ── Main Page ──────────────────────────────────────────── */
 
 export default function AgentPage() {
+  const { companyId } = useCompany();
   const [decisions, setDecisions] = useState<AgentDecision[]>([]);
   const [pending, setPending] = useState<AgentDecision[]>([]);
   const [activeEvents, setActiveEvents] = useState<RiskEvent[]>([]);
@@ -1109,16 +1110,16 @@ export default function AgentPage() {
 
   useEffect(() => {
     loadData();
-    loadTemplates(COMPANY_ID).then(setTemplates).catch(console.error);
+    loadTemplates(companyId).then(setTemplates).catch(console.error);
     api.riskEvents.active().then((data) => {
       const events = data as RiskEvent[];
       setActiveEvents(events);
       if (events.length > 0) setSelectedEventId(events[0].id);
     }).catch(console.error);
-  }, []);
+  }, [companyId]);
 
   async function loadData() {
-    const company = api.companies(COMPANY_ID);
+    const company = api.companies(companyId);
     const [allDec, pendDec] = await Promise.allSettled([
       company.decisions.list(),
       company.decisions.pending(),
@@ -1133,7 +1134,7 @@ export default function AgentPage() {
     setLastRunResult(null);
     try {
       const result = await api.post<AgentRunResult>(
-        `/api/v1/companies/${COMPANY_ID}/agent/trigger`,
+        `/api/v1/companies/${companyId}/agent/trigger`,
         { risk_event_id: selectedEventId }
       );
       setLastRunResult(result);
@@ -1156,7 +1157,7 @@ export default function AgentPage() {
 
   async function handleApproval(decisionId: string, approved: boolean) {
     try {
-      await api.companies(COMPANY_ID).decisions.approve(decisionId, approved);
+      await api.companies(companyId).decisions.approve(decisionId, approved);
       await loadData();
     } catch (err) {
       console.error(err);

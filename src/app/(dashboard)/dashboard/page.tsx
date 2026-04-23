@@ -8,12 +8,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { useMapStore } from "@/stores/map-store";
 import { getSeverityLevel, getSeverityLabel, formatEventTitle } from "@/lib/risk-utils";
 import type { RiskEvent, Asset } from "@/types";
 import { AlertTriangle, MapPin, Shield, Bot, X, Globe, Map as MapIcon, Waves, GitBranch } from "lucide-react";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 const SEVERITY_LEVELS = ["critical", "high", "medium", "low"] as const;
 const EVENT_CATEGORIES = [
@@ -91,6 +90,7 @@ function MapControls() {
 }
 
 export default function DashboardPage() {
+  const { companyId } = useCompany();
   const [stats, setStats] = useState<Stats>({ riskEvents: 0, assets: 0, pendingDecisions: 0, mitigations: 0 });
   const [allEvents, setAllEvents] = useState<RiskEvent[]>([]);
 
@@ -102,7 +102,7 @@ export default function DashboardPage() {
   } = useMapStore();
 
   useEffect(() => {
-    const company = api.companies(COMPANY_ID);
+    const company = api.companies(companyId);
 
     Promise.allSettled([
       api.riskEvents.active(),
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         mitigations: mitigations.length,
       });
     });
-  }, []);
+  }, [companyId]);
 
   // Apply filters for sidebar
   const filteredEvents = useMemo(() => {

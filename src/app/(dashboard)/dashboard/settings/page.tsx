@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,6 @@ import {
   loadConnections,
 } from "@/lib/integration-connections";
 import { INTEGRATIONS, findIntegration } from "@/lib/integrations";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 type Tab = "governance" | "alerts" | "templates";
 
@@ -1170,6 +1169,7 @@ function TemplatesTab({
 /* ── Main Settings Page ─────────────────────────────────── */
 
 export default function SettingsPage() {
+  const { companyId } = useCompany();
   const [tab, setTab] = useState<Tab>("governance");
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [templates, setTemplatesState] = useState<ActionTemplate[]>(DEFAULT_TEMPLATES);
@@ -1182,15 +1182,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettings();
-    loadTemplates(COMPANY_ID).then(setTemplatesState).catch(console.error);
-    loadConnections(COMPANY_ID).then(setConnections).catch(console.error);
-  }, []);
+    loadTemplates(companyId).then(setTemplatesState).catch(console.error);
+    loadConnections(companyId).then(setConnections).catch(console.error);
+  }, [companyId]);
 
   async function persistTemplate(tpl: ActionTemplate) {
     if (!tpl.id) return;
     setSaveStatus((prev) => ({ ...prev, [tpl.id!]: "saving" }));
     try {
-      const next = await updateTemplate(COMPANY_ID, tpl.id, {
+      const next = await updateTemplate(companyId, tpl.id, {
         name: tpl.name,
         description: tpl.description,
         severity_min: tpl.severity_min,
@@ -1219,7 +1219,7 @@ export default function SettingsPage() {
 
   async function createNewTemplate(tpl: ActionTemplate) {
     try {
-      const created = await createTemplate(COMPANY_ID, tpl);
+      const created = await createTemplate(companyId, tpl);
       setTemplatesState((prev) => [...prev, created]);
     } catch (err) {
       console.error("Failed to create template:", err);
@@ -1228,7 +1228,7 @@ export default function SettingsPage() {
 
   async function removeTemplate(id: string) {
     try {
-      await deleteTemplate(COMPANY_ID, id);
+      await deleteTemplate(companyId, id);
     } catch (err) {
       console.error("Failed to delete template:", err);
     }
@@ -1236,7 +1236,7 @@ export default function SettingsPage() {
 
   async function resetTemplatesToDefaults() {
     try {
-      setTemplatesState(await resetTemplates(COMPANY_ID));
+      setTemplatesState(await resetTemplates(companyId));
     } catch (err) {
       console.error("Failed to reset templates:", err);
     }
@@ -1244,7 +1244,7 @@ export default function SettingsPage() {
 
   async function seedMissingTemplates() {
     try {
-      setTemplatesState(await seedMissingDefaults(COMPANY_ID));
+      setTemplatesState(await seedMissingDefaults(companyId));
     } catch (err) {
       console.error("Failed to seed missing templates:", err);
     }
@@ -1252,7 +1252,7 @@ export default function SettingsPage() {
 
   async function loadSettings() {
     try {
-      const data = await api.companies(COMPANY_ID).settings.get();
+      const data = await api.companies(companyId).settings.get();
       setSettings({ ...DEFAULTS, ...(data as Partial<Settings>) });
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -1269,7 +1269,7 @@ export default function SettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.companies(COMPANY_ID).settings.update(settings);
+      await api.companies(companyId).settings.update(settings);
       setSaved(true);
       setDirty(false);
       setTimeout(() => setSaved(false), 3000);

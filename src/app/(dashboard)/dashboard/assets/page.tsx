@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +12,8 @@ import { getAssetLocation, getAssetTypeLabel, getAssetIcon } from "@/lib/asset-u
 import type { Asset, AssetRiskScore } from "@/types";
 import { Plus, MapPin, Search, AlertTriangle } from "lucide-react";
 
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
-
 export default function AssetsPage() {
+  const { companyId } = useCompany();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [riskScores, setRiskScores] = useState<Record<string, AssetRiskScore>>({});
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -28,7 +28,7 @@ export default function AssetsPage() {
 
   const loadAssets = async () => {
     try {
-      const data = await api.companies(COMPANY_ID).assets.list();
+      const data = await api.companies(companyId).assets.list();
       const result = data as { items?: Asset[] } | Asset[];
       setAssets(Array.isArray(result) ? result : result.items || []);
     } catch (err) {
@@ -39,19 +39,19 @@ export default function AssetsPage() {
   useEffect(() => {
     loadAssets();
     // Load risk scores
-    api.companies(COMPANY_ID).riskScores.list().then((data) => {
+    api.companies(companyId).riskScores.list().then((data) => {
       const scores = data as AssetRiskScore[];
       const map: Record<string, AssetRiskScore> = {};
       for (const s of scores) map[s.asset_id] = s;
       setRiskScores(map);
     }).catch(console.error);
-  }, []);
+  }, [companyId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.companies(COMPANY_ID).assets.create({
+      await api.companies(companyId).assets.create({
         name, address, asset_type: assetType, criticality,
       });
       await loadAssets();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +30,6 @@ import {
   type IntegrationConnection,
   type TestResult,
 } from "@/lib/integration-connections";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 /* ── Field renderer ─────────────────────────────────────── */
 
@@ -168,6 +167,7 @@ function ConnectForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const { companyId } = useCompany();
   const Icon = spec.icon;
   const [displayName, setDisplayName] = useState(existing?.display_name || spec.name);
   // Credentials are never returned by the API (encrypted server-side).
@@ -215,18 +215,18 @@ function ConnectForm({
     try {
       let id = connectionId;
       if (!id) {
-        const created = await createConnection(COMPANY_ID, spec.id, displayName, credentials);
+        const created = await createConnection(companyId, spec.id, displayName, credentials);
         id = created.id;
         setConnectionId(id);
       } else if (isUpdatingCreds) {
-        await updateConnection(COMPANY_ID, id, { display_name: displayName, credentials });
+        await updateConnection(companyId, id, { display_name: displayName, credentials });
       } else {
         // Existing connection, no new credentials — just update the display name if changed
         if (existing && displayName !== existing.display_name) {
-          await updateConnection(COMPANY_ID, id, { display_name: displayName });
+          await updateConnection(companyId, id, { display_name: displayName });
         }
       }
-      const result = await testStoredConnection(COMPANY_ID, id);
+      const result = await testStoredConnection(companyId, id);
       setTestResult(result);
     } catch (err) {
       setTestResult({ ok: false, message: "Test failed", detail: String(err) });
@@ -250,9 +250,9 @@ function ConnectForm({
           display_name: displayName,
         };
         if (isUpdatingCreds) patch.credentials = credentials;
-        await updateConnection(COMPANY_ID, connectionId, patch);
+        await updateConnection(companyId, connectionId, patch);
       } else {
-        await createConnection(COMPANY_ID, spec.id, displayName, credentials);
+        await createConnection(companyId, spec.id, displayName, credentials);
       }
       onSaved();
     } catch (err) {
@@ -330,7 +330,7 @@ function ConnectForm({
                 onClick={async () => {
                   setTesting(true);
                   try {
-                    const r = await testStoredConnection(COMPANY_ID, existing.id);
+                    const r = await testStoredConnection(companyId, existing.id);
                     setTestResult(r);
                   } catch (err) {
                     setTestResult({ ok: false, message: "Test failed", detail: String(err) });
@@ -655,6 +655,7 @@ type View =
   | { mode: "connect"; spec: IntegrationSpec; existing: IntegrationConnection | null };
 
 export default function IntegrationsPage() {
+  const { companyId } = useCompany();
   const [view, setView] = useState<View>({ mode: "list" });
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [search, setSearch] = useState("");
@@ -662,12 +663,12 @@ export default function IntegrationsPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadConnections(COMPANY_ID).then(setConnections).catch(console.error);
-  }, []);
+    loadConnections(companyId).then(setConnections).catch(console.error);
+  }, [companyId]);
 
   async function refresh() {
     try {
-      setConnections(await loadConnections(COMPANY_ID));
+      setConnections(await loadConnections(companyId));
     } catch (err) {
       console.error(err);
     }
@@ -676,7 +677,7 @@ export default function IntegrationsPage() {
   async function handleTest(conn: IntegrationConnection) {
     setTestingId(conn.id);
     try {
-      await testStoredConnection(COMPANY_ID, conn.id);
+      await testStoredConnection(companyId, conn.id);
     } catch (err) {
       console.error(err);
     }
@@ -686,7 +687,7 @@ export default function IntegrationsPage() {
 
   async function handleDelete(conn: IntegrationConnection) {
     if (!confirm(`Delete connection "${conn.display_name}"? This cannot be undone.`)) return;
-    await deleteConnection(COMPANY_ID, conn.id);
+    await deleteConnection(companyId, conn.id);
     await refresh();
   }
 

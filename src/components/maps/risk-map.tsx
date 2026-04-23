@@ -8,12 +8,11 @@ import { ScatterplotLayer, ArcLayer } from "@deck.gl/layers";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import { useMapStore } from "@/stores/map-store";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { getSeverityLevel, formatEventTitle, getSeverityLabel, getEventCoordinates, haversineKm } from "@/lib/risk-utils";
 import { getAssetCoordinates, getAssetIcon, getAssetTypeLabel, getAssetLocation } from "@/lib/asset-utils";
 import type { RiskEvent, Asset } from "@/types";
 import "maplibre-gl/dist/maplibre-gl.css";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 interface MappedEvent extends RiskEvent {
   _coords: [number, number];
@@ -58,6 +57,7 @@ const ASSET_COLORS: Record<string, [number, number, number, number]> = {
 };
 
 export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => void }) {
+  const { companyId } = useCompany();
   const {
     viewState, setViewState,
     viewMode,
@@ -74,11 +74,11 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
   // Fetch data
   useEffect(() => {
     api.riskEvents.active().then((data) => setEvents(data as RiskEvent[])).catch(console.error);
-    api.companies(COMPANY_ID).assets.list().then((data) => {
+    api.companies(companyId).assets.list().then((data) => {
       const result = data as { items?: Asset[] } | Asset[];
       setAssets(Array.isArray(result) ? result : result.items || []);
     }).catch(console.error);
-  }, []);
+  }, [companyId]);
 
   // Map risk events to coordinates
   const mappedEvents = useMemo(() => {

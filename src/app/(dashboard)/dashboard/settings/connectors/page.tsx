@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useCompany } from "@/lib/company-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import type { CloudConnector } from "@/types";
 import { Plus, RefreshCw, Trash2, Loader2, CheckCircle, XCircle, Cloud } from "lucide-react";
-
-const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
 
 const PROVIDERS = [
   { value: "demo", label: "Demo (Sample Data)", icon: "Demo" },
@@ -20,6 +19,7 @@ const PROVIDERS = [
 ];
 
 export default function ConnectorsPage() {
+  const { companyId } = useCompany();
   const [connectors, setConnectors] = useState<CloudConnector[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -34,14 +34,14 @@ export default function ConnectorsPage() {
 
   const loadConnectors = async () => {
     try {
-      const data = await api.companies(COMPANY_ID).connectors.list();
+      const data = await api.companies(companyId).connectors.list();
       setConnectors(data as CloudConnector[]);
     } catch (err) {
       console.error(err);
     }
   };
 
-  useEffect(() => { loadConnectors(); }, []);
+  useEffect(() => { loadConnectors(); }, [companyId]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +52,7 @@ export default function ConnectorsPage() {
       const credentials = JSON.parse(credentialsJson);
       const config = configJson.trim() ? JSON.parse(configJson) : null;
 
-      await api.companies(COMPANY_ID).connectors.create({
+      await api.companies(companyId).connectors.create({
         provider,
         display_name: displayName,
         credentials,
@@ -73,7 +73,7 @@ export default function ConnectorsPage() {
   const handleSync = async (connectorId: string) => {
     setSyncing(connectorId);
     try {
-      await api.companies(COMPANY_ID).connectors.sync(connectorId);
+      await api.companies(companyId).connectors.sync(connectorId);
       // Poll for completion — sync typically takes 3-10 seconds
       const poll = async (attempts: number) => {
         await loadConnectors();
@@ -94,7 +94,7 @@ export default function ConnectorsPage() {
   const handleDelete = async (connectorId: string) => {
     if (!confirm("Delete this connector? Synced assets will remain.")) return;
     try {
-      await api.companies(COMPANY_ID).connectors.delete(connectorId);
+      await api.companies(companyId).connectors.delete(connectorId);
       await loadConnectors();
     } catch (err) {
       console.error(err);
