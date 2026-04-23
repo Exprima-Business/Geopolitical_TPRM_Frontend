@@ -22,6 +22,8 @@ import {
   BarChart3, Target, Info, BookOpen, Users, Gauge,
   Lightbulb, TrendingUp,
 } from "lucide-react";
+import { DismissButton } from "@/components/decisions/dismiss-button";
+import { useFlag } from "@/lib/feature-flag-context";
 
 /* ── Reasoning parser ───────────────────────────────────── */
 
@@ -959,17 +961,22 @@ function DecisionCard({
   templates,
   onApprove,
   onReject,
+  onDismissed,
 }: {
   decision: AgentDecision;
   templates: ActionTemplate[];
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onDismissed?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const typeInfo = DECISION_ICONS[decision.decision_type] || DECISION_ICONS.assess;
   const Icon = typeInfo.icon;
   const approvalInfo = APPROVAL_BADGES[decision.approval_status] || APPROVAL_BADGES.pending_approval;
   const matchedTemplate = findTemplateForAction(decision.action, templates);
+  // The Dismiss feature hides until the flag is on (it's off by default for new
+  // workspaces; admins enable via Settings → Feature Flags).
+  const dismissalEnabled = useFlag("decision_dismissal_enabled");
 
   return (
     <Card className={decision.approval_status === "pending_approval" ? "border-yellow-500/30" : ""}>
@@ -1086,6 +1093,19 @@ function DecisionCard({
                 <Button size="sm" variant="destructive" onClick={() => onReject(decision.id)}>
                   <XCircle className="h-4 w-4" /> Reject
                 </Button>
+                {dismissalEnabled && (
+                  <DismissButton
+                    decisionId={decision.id}
+                    decisionContext={{
+                      event_title: decision.event_title ?? undefined,
+                      event_severity: decision.event_severity ?? undefined,
+                      event_country_code: decision.event_country_code ?? undefined,
+                      event_region: decision.event_region ?? undefined,
+                      event_category: decision.event_category ?? undefined,
+                    }}
+                    onDismissed={() => onDismissed?.()}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -1296,6 +1316,7 @@ export default function AgentPage() {
               templates={templates}
               onApprove={(id) => handleApproval(id, true)}
               onReject={(id) => handleApproval(id, false)}
+              onDismissed={loadData}
             />
           ))}
         </div>
@@ -1328,6 +1349,7 @@ export default function AgentPage() {
               templates={templates}
               onApprove={(id) => handleApproval(id, true)}
               onReject={(id) => handleApproval(id, false)}
+              onDismissed={loadData}
             />
           ))
         )}

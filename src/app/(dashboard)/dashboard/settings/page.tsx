@@ -11,7 +11,10 @@ import {
   Shield, Bell, Save, Loader2, CheckCircle,
   AlertTriangle, Bot, Zap, Lock, Sliders, RotateCcw,
   BookOpen, ChevronDown, ChevronRight, Plus, Trash2,
+  XCircle, Flag,
 } from "lucide-react";
+import { DismissalRulesPanel } from "@/components/settings/dismissal-rules-panel";
+import { FeatureFlagsPanel } from "@/components/settings/feature-flags-panel";
 import {
   type ActionTemplate,
   type TemplateStep,
@@ -30,7 +33,7 @@ import {
 } from "@/lib/integration-connections";
 import { INTEGRATIONS, findIntegration } from "@/lib/integrations";
 
-type Tab = "governance" | "alerts" | "templates";
+type Tab = "governance" | "alerts" | "templates" | "dismissals" | "flags";
 
 interface Settings {
   guardrail_auto_approve_max_severity: number;
@@ -75,7 +78,9 @@ const DEFAULTS: Settings = {
 const TABS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: "governance", label: "Agent Governance", icon: Shield },
   { id: "templates", label: "Action Templates", icon: BookOpen },
+  { id: "dismissals", label: "Dismissal Rules", icon: XCircle },
   { id: "alerts", label: "Alerts & Notifications", icon: Bell },
+  { id: "flags", label: "Feature Flags", icon: Flag },
 ];
 
 /* ── Reusable components ────────────────────────────────── */
@@ -1304,7 +1309,7 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {tab === "templates" ? (
+          {tab === "templates" && (
             <>
               <span className="text-xs text-muted-foreground">Templates auto-save</span>
               <Button variant="outline" size="sm" onClick={seedMissingTemplates}>
@@ -1314,7 +1319,11 @@ export default function SettingsPage() {
                 <RotateCcw className="h-3.5 w-3.5" /> Reset Templates
               </Button>
             </>
-          ) : (
+          )}
+          {(tab === "dismissals" || tab === "flags") && (
+            <span className="text-xs text-muted-foreground">Changes auto-save</span>
+          )}
+          {(tab === "governance" || tab === "alerts") && (
             <>
               {dirty && (
                 <span className="flex items-center gap-1 text-xs text-yellow-400">
@@ -1375,6 +1384,8 @@ export default function SettingsPage() {
         />
       )}
       {tab === "alerts" && <AlertsTab settings={settings} update={update} />}
+      {tab === "dismissals" && <DismissalRulesPanel />}
+      {tab === "flags" && <FeatureFlagsPanel />}
     </div>
   );
 }

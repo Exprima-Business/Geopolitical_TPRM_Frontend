@@ -15,6 +15,8 @@ import {
   Globe,
   Settings,
   Plug,
+  Briefcase,
+  ScrollText,
 } from "lucide-react";
 
 const navItems = [
@@ -29,7 +31,13 @@ const navItems = [
     href: "/dashboard/assets",
     label: "Assets",
     icon: MapPin,
-    tooltip: "Your monitored infrastructure — cloud resources, offices, vendors, and third parties.",
+    tooltip: "Your monitored infrastructure — cloud resources, offices, and owned infrastructure.",
+  },
+  {
+    href: "/dashboard/third-parties",
+    label: "Third Parties",
+    icon: Briefcase,
+    tooltip: "Vendor catalog — suppliers, SaaS providers, and downstream dependencies with security scores.",
   },
   {
     href: "/dashboard/risks",
@@ -48,6 +56,12 @@ const navItems = [
     label: "AI Agent",
     icon: Bot,
     tooltip: "Autonomous risk assessment — the agent proposes and executes mitigations.",
+  },
+  {
+    href: "/dashboard/audit",
+    label: "Audit Log",
+    icon: ScrollText,
+    tooltip: "Append-only record of every action — compliance-ready, filterable, exportable as CSV.",
   },
   {
     href: "/dashboard/settings/connectors",
