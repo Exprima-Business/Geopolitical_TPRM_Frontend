@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,157 @@ import {
   Bot, CheckCircle, XCircle, Loader2, AlertTriangle,
   ChevronDown, ChevronRight, Shield, Zap, Eye, Send,
   Clock, FileText, Brain, Wrench, ArrowRight, Activity,
-  BarChart3, Target, Info, BookOpen, Users,
+  BarChart3, Target, Info, BookOpen, Users, Gauge,
+  Lightbulb, TrendingUp,
 } from "lucide-react";
 
 const COMPANY_ID = "cb9875d1-1a9f-491f-838f-de64fc489251";
+
+/* ── Reasoning parser ───────────────────────────────────── */
+
+/**
+ * The agent returns reasoning text with markdown-ish inline labels like:
+ *   **Business Impact Risk Level:** Low **Recommended Action:** Monitor
+ *   **Justification:** Despite ...
+ * Parse it into structured sections so the UI can render them with visual
+ * hierarchy instead of a wall of text.
+ */
+interface ParsedReasoning {
+  sections: { label: string; value: string }[];
+  remainder: string;
+}
+
+function parseReasoning(text: string): ParsedReasoning {
+  if (!text) return { sections: [], remainder: "" };
+
+  // Split on bold-labelled segments: **Label:** value
+  const pattern = /\*\*([^*]+?):\*\*\s*/g;
+  const matches = [...text.matchAll(pattern)];
+  if (matches.length === 0) {
+    return { sections: [], remainder: text.trim() };
+  }
+
+  const sections: { label: string; value: string }[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const label = match[1].trim();
+    const start = match.index! + match[0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index! : text.length;
+    let value = text.slice(start, end).trim();
+    // Strip trailing **
+    value = value.replace(/\s*\*\*\s*$/g, "").trim();
+    sections.push({ label, value });
+  }
+
+  // Anything before the first bold label is preamble; keep it as remainder.
+  const preamble = text.slice(0, matches[0].index).trim();
+  return { sections, remainder: preamble };
+}
+
+/** Map a parsed label to an icon + color */
+function labelVisuals(label: string): { icon: typeof Shield; color: string } {
+  const lower = label.toLowerCase();
+  if (lower.includes("risk level") || lower.includes("severity")) return { icon: Gauge, color: "text-orange-400" };
+  if (lower.includes("recommended action") || lower.includes("action")) return { icon: Zap, color: "text-blue-400" };
+  if (lower.includes("justification") || lower.includes("reasoning")) return { icon: Lightbulb, color: "text-yellow-400" };
+  if (lower.includes("assessment") || lower.includes("summary")) return { icon: FileText, color: "text-primary" };
+  if (lower.includes("actions taken")) return { icon: CheckCircle, color: "text-emerald-400" };
+  if (lower.includes("recommendation")) return { icon: TrendingUp, color: "text-cyan-400" };
+  if (lower.includes("impact")) return { icon: Target, color: "text-purple-400" };
+  return { icon: Info, color: "text-muted-foreground" };
+}
+
+/** Color a risk-level value (Low/Medium/High/Critical) */
+function riskLevelStyle(value: string): { bg: string; text: string; border: string } | null {
+  const v = value.toLowerCase().trim().split(/\s+/)[0].replace(/[.,]/g, "");
+  switch (v) {
+    case "critical":
+      return { bg: "bg-red-500/20", text: "text-red-300", border: "border-red-500/40" };
+    case "high":
+      return { bg: "bg-orange-500/20", text: "text-orange-300", border: "border-orange-500/40" };
+    case "medium":
+    case "moderate":
+      return { bg: "bg-yellow-500/20", text: "text-yellow-300", border: "border-yellow-500/40" };
+    case "low":
+      return { bg: "bg-emerald-500/20", text: "text-emerald-300", border: "border-emerald-500/40" };
+    case "negligible":
+    case "minimal":
+      return { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" };
+    default:
+      return null;
+  }
+}
+
+/** Render inline **bold** within a string to JSX */
+function renderInline(text: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i} className="text-foreground font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+/* ── Reasoning panel ────────────────────────────────────── */
+
+function ReasoningPanel({ reasoning }: { reasoning: string }) {
+  const parsed = parseReasoning(reasoning);
+
+  if (parsed.sections.length === 0) {
+    // Nothing to structure — show as plain text
+    return <p className="text-sm leading-relaxed">{renderInline(parsed.remainder)}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {parsed.remainder && (
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {renderInline(parsed.remainder)}
+        </p>
+      )}
+      <div className="grid gap-2">
+        {parsed.sections.map((sec, i) => {
+          const { icon: Icon, color } = labelVisuals(sec.label);
+          const isRiskLevel = /risk level|severity/i.test(sec.label);
+          const riskStyle = isRiskLevel ? riskLevelStyle(sec.value) : null;
+
+          // For short single-word values (e.g., "Low", "Monitor") render as a pill.
+          const shortValue = sec.value.length <= 40 && !sec.value.includes("\n");
+
+          return (
+            <div
+              key={i}
+              className={`rounded-lg border p-3 ${
+                riskStyle ? `${riskStyle.bg} ${riskStyle.border}` : "bg-muted/30 border-border"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${riskStyle?.text ?? color}`} />
+                <div className="flex-1 min-w-0">
+                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${
+                    riskStyle?.text ?? "text-muted-foreground"
+                  }`}>
+                    {sec.label}
+                  </div>
+                  {shortValue ? (
+                    <div className={`text-base font-bold mt-0.5 ${riskStyle?.text ?? "text-foreground"}`}>
+                      {sec.value}
+                    </div>
+                  ) : (
+                    <p className={`text-sm mt-1 leading-relaxed ${riskStyle?.text ?? "text-foreground/90"}`}>
+                      {renderInline(sec.value)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function parseList<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data as T[];
@@ -452,6 +599,153 @@ function TemplatePlaybookBlock({ template }: { template: ActionTemplate }) {
   );
 }
 
+/* ── Action executions audit log ────────────────────────── */
+
+interface ActionExecution {
+  id: string;
+  integration_id: string;
+  action_key: string;
+  status: "pending" | "running" | "success" | "failed" | "skipped";
+  request_method: string | null;
+  request_url: string | null;
+  response_status: number | null;
+  error_message: string | null;
+  duration_ms: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+function ExecutionStatusBadge({ status }: { status: ActionExecution["status"] }) {
+  if (status === "success") {
+    return (
+      <Badge variant="default" className="text-[10px] gap-1">
+        <CheckCircle className="h-3 w-3" /> Success
+      </Badge>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <Badge variant="destructive" className="text-[10px] gap-1">
+        <XCircle className="h-3 w-3" /> Failed
+      </Badge>
+    );
+  }
+  if (status === "running") {
+    return (
+      <Badge variant="secondary" className="text-[10px] gap-1">
+        <Loader2 className="h-3 w-3 animate-spin" /> Running
+      </Badge>
+    );
+  }
+  if (status === "skipped") {
+    return (
+      <Badge variant="outline" className="text-[10px]">Skipped</Badge>
+    );
+  }
+  return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+}
+
+function ExecutionsPanel({ decisionId }: { decisionId: string }) {
+  const [executions, setExecutions] = useState<ActionExecution[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api
+      .companies(COMPANY_ID)
+      .executions.list({ agent_decision_id: decisionId, page_size: "50" })
+      .then((data) => {
+        if (cancelled) return;
+        const items = (data as { items?: ActionExecution[] })?.items ?? [];
+        setExecutions(items);
+      })
+      .catch(() => {
+        if (!cancelled) setExecutions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [decisionId]);
+
+  if (loading) {
+    return (
+      <div className="text-xs text-muted-foreground flex items-center gap-2">
+        <Loader2 className="h-3 w-3 animate-spin" /> Loading executions…
+      </div>
+    );
+  }
+
+  if (!executions || executions.length === 0) {
+    return (
+      <div>
+        <h4 className="text-sm font-semibold flex items-center gap-1 mb-2">
+          <Zap className="h-3.5 w-3.5" /> Execution Log
+        </h4>
+        <p className="text-xs text-muted-foreground italic">
+          No integration calls attempted for this decision.
+        </p>
+      </div>
+    );
+  }
+
+  const succeeded = executions.filter((e) => e.status === "success").length;
+  const failed = executions.filter((e) => e.status === "failed").length;
+  const skipped = executions.filter((e) => e.status === "skipped").length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-semibold flex items-center gap-1">
+          <Zap className="h-3.5 w-3.5" /> Execution Log
+          <span className="text-muted-foreground font-normal">({executions.length})</span>
+        </h4>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          {succeeded > 0 && <span className="text-emerald-400">{succeeded} success</span>}
+          {failed > 0 && <span className="text-red-400">{failed} failed</span>}
+          {skipped > 0 && <span>{skipped} skipped</span>}
+        </div>
+      </div>
+      <div className="space-y-2">
+        {executions.map((ex) => (
+          <div key={ex.id} className="rounded-md border border-border bg-muted/20 p-2 text-xs">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {ex.integration_id}
+                </Badge>
+                <span className="font-mono text-muted-foreground">{ex.action_key}</span>
+                <ExecutionStatusBadge status={ex.status} />
+                {ex.response_status != null && (
+                  <span className="text-muted-foreground">HTTP {ex.response_status}</span>
+                )}
+                {ex.duration_ms != null && (
+                  <span className="text-muted-foreground">{ex.duration_ms}ms</span>
+                )}
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {new Date(ex.created_at).toLocaleTimeString()}
+              </span>
+            </div>
+            {ex.request_url && (
+              <div className="mt-1 font-mono text-[10px] text-muted-foreground break-all">
+                {ex.request_method} {ex.request_url}
+              </div>
+            )}
+            {ex.error_message && (
+              <div className="mt-1 text-[11px] text-red-400">{ex.error_message}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Decision Card (for history/pending) ────────────────── */
 
 function DecisionCard({
@@ -496,8 +790,11 @@ function DecisionCard({
               </button>
             </div>
 
-            {decision.reasoning && (
-              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{decision.reasoning}</p>
+            {/* Collapsed preview — first parsed section or raw reasoning */}
+            {decision.reasoning && !expanded && (
+              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                {parseReasoning(decision.reasoning).sections[0]?.value || decision.reasoning}
+              </p>
             )}
 
             <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
@@ -512,12 +809,31 @@ function DecisionCard({
               <div className="mt-4 space-y-4 border-t border-border pt-4">
                 {matchedTemplate && <TemplatePlaybookBlock template={matchedTemplate} />}
 
+                {!matchedTemplate && (
+                  <div className="rounded-lg border border-yellow-400/30 bg-yellow-400/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+                      <div className="text-xs">
+                        <div className="font-semibold text-yellow-200">
+                          No playbook matched action <code className="font-mono">{decision.action}</code>
+                        </div>
+                        <p className="text-yellow-100/80 mt-1">
+                          The executor needs an enabled action template with{" "}
+                          <code className="font-mono">action_key = &quot;{decision.action}&quot;</code> to
+                          dispatch steps (e.g. post to Slack, open a ticket). Add one in{" "}
+                          <a href="/dashboard/settings" className="underline">Settings → Action Templates</a>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {decision.reasoning && (
                   <div>
-                    <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
-                      <FileText className="h-3.5 w-3.5" /> Full Reasoning
+                    <h4 className="text-sm font-semibold flex items-center gap-1 mb-2">
+                      <FileText className="h-3.5 w-3.5" /> Agent Reasoning
                     </h4>
-                    <p className="text-sm text-muted-foreground">{decision.reasoning}</p>
+                    <ReasoningPanel reasoning={decision.reasoning} />
                   </div>
                 )}
 
@@ -537,15 +853,17 @@ function DecisionCard({
                   </div>
                 )}
 
+                <ExecutionsPanel decisionId={decision.id} />
+
                 {decision.result && Object.keys(decision.result).length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
-                      <Zap className="h-3.5 w-3.5" /> Execution Result
-                    </h4>
-                    <pre className="p-3 rounded bg-muted/50 text-xs font-mono overflow-x-auto">
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      <ChevronRight className="h-3 w-3" /> Raw decision result JSON
+                    </summary>
+                    <pre className="mt-2 p-3 rounded bg-muted/50 text-xs font-mono overflow-x-auto">
                       {JSON.stringify(decision.result, null, 2)}
                     </pre>
-                  </div>
+                  </details>
                 )}
 
                 {decision.executed_at && (
