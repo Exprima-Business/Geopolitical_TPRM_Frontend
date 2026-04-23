@@ -110,62 +110,123 @@ function renderInline(text: string): ReactNode {
   });
 }
 
-/* ── Reasoning panel ────────────────────────────────────── */
+/* ── Reasoning panel (compact, always-visible) ──────────── */
 
-function ReasoningPanel({ reasoning }: { reasoning: string }) {
+/**
+ * Short-value section rendered as a tight icon + label + value pill. Fixed
+ * width so it doesn't expand full-bleed. Severity-coded when the section is
+ * a risk level.
+ */
+function ReasoningPill({
+  section,
+}: {
+  section: { label: string; value: string };
+}) {
+  const { icon: Icon, color } = labelVisuals(section.label);
+  const isRiskLevel = /risk level|severity|impact/i.test(section.label);
+  const riskStyle = isRiskLevel ? riskLevelStyle(section.value) : null;
+
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${
+        riskStyle ? `${riskStyle.bg} ${riskStyle.border}` : "bg-muted/40 border-border"
+      }`}
+    >
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${riskStyle?.text ?? color}`} />
+      <div className="leading-tight">
+        <div
+          className={`text-[9px] uppercase tracking-wide font-semibold ${
+            riskStyle?.text ?? "text-muted-foreground"
+          }`}
+        >
+          {section.label}
+        </div>
+        <div
+          className={`text-sm font-bold whitespace-nowrap ${
+            riskStyle?.text ?? "text-foreground"
+          }`}
+        >
+          {section.value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Long-form section rendered as a labeled, bordered box. Uses line-clamp to
+ * keep height bounded when collapsed; expands to show full text when the
+ * card is expanded.
+ */
+function ReasoningBox({
+  section,
+  full,
+}: {
+  section: { label: string; value: string };
+  full: boolean;
+}) {
+  const { icon: Icon, color } = labelVisuals(section.label);
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-2.5 py-1.5 min-w-0">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+        <span className="text-[9px] uppercase tracking-wide font-semibold text-muted-foreground">
+          {section.label}
+        </span>
+      </div>
+      <p
+        className={`text-xs leading-relaxed text-foreground/90 ${
+          full ? "" : "line-clamp-2"
+        }`}
+      >
+        {renderInline(section.value)}
+      </p>
+    </div>
+  );
+}
+
+function CompactReasoning({
+  reasoning,
+  expanded,
+}: {
+  reasoning: string;
+  expanded: boolean;
+}) {
   const parsed = parseReasoning(reasoning);
 
   if (parsed.sections.length === 0) {
-    // Nothing to structure — show as plain text
-    return <p className="text-sm leading-relaxed">{renderInline(parsed.remainder)}</p>;
+    return (
+      <p
+        className={`text-sm text-muted-foreground mt-2 ${
+          expanded ? "" : "line-clamp-2"
+        }`}
+      >
+        {renderInline(parsed.remainder)}
+      </p>
+    );
+  }
+
+  // Split into "headline" pills (short, scannable) and "detail" boxes
+  // (justification, recommendation, etc.). Pills render inline at their
+  // natural width; detail boxes fill remaining horizontal space.
+  const pills: { label: string; value: string }[] = [];
+  const boxes: { label: string; value: string }[] = [];
+  for (const sec of parsed.sections) {
+    const short = sec.value.length <= 40 && !sec.value.includes("\n");
+    if (short) pills.push(sec);
+    else boxes.push(sec);
   }
 
   return (
-    <div className="space-y-2">
-      {parsed.remainder && (
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {renderInline(parsed.remainder)}
-        </p>
-      )}
-      <div className="grid gap-2">
-        {parsed.sections.map((sec, i) => {
-          const { icon: Icon, color } = labelVisuals(sec.label);
-          const isRiskLevel = /risk level|severity/i.test(sec.label);
-          const riskStyle = isRiskLevel ? riskLevelStyle(sec.value) : null;
-
-          // For short single-word values (e.g., "Low", "Monitor") render as a pill.
-          const shortValue = sec.value.length <= 40 && !sec.value.includes("\n");
-
-          return (
-            <div
-              key={i}
-              className={`rounded-lg border p-3 ${
-                riskStyle ? `${riskStyle.bg} ${riskStyle.border}` : "bg-muted/30 border-border"
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${riskStyle?.text ?? color}`} />
-                <div className="flex-1 min-w-0">
-                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${
-                    riskStyle?.text ?? "text-muted-foreground"
-                  }`}>
-                    {sec.label}
-                  </div>
-                  {shortValue ? (
-                    <div className={`text-base font-bold mt-0.5 ${riskStyle?.text ?? "text-foreground"}`}>
-                      {sec.value}
-                    </div>
-                  ) : (
-                    <p className={`text-sm mt-1 leading-relaxed ${riskStyle?.text ?? "text-foreground/90"}`}>
-                      {renderInline(sec.value)}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="mt-3 flex flex-wrap items-start gap-2">
+      {pills.map((sec, i) => (
+        <ReasoningPill key={`p-${i}`} section={sec} />
+      ))}
+      {boxes.map((sec, i) => (
+        <div key={`b-${i}`} className="flex-1 min-w-[220px]">
+          <ReasoningBox section={sec} full={expanded} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -790,14 +851,7 @@ function DecisionCard({
               </button>
             </div>
 
-            {/* Collapsed preview — first parsed section or raw reasoning */}
-            {decision.reasoning && !expanded && (
-              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                {parseReasoning(decision.reasoning).sections[0]?.value || decision.reasoning}
-              </p>
-            )}
-
-            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
               <span className={typeInfo.color}>{typeInfo.label}</span>
               {decision.confidence != null && (
                 <span>Confidence: {Math.round(decision.confidence * 100)}%</span>
@@ -805,48 +859,46 @@ function DecisionCard({
               <span><Clock className="h-3 w-3 inline mr-1" />{new Date(decision.created_at).toLocaleString()}</span>
             </div>
 
+            {/* Always-visible compact reasoning — pills + constrained box */}
+            {decision.reasoning && (
+              <CompactReasoning reasoning={decision.reasoning} expanded={expanded} />
+            )}
+
+            {/* Always-visible "no playbook matched" banner (audit-critical) */}
+            {!matchedTemplate && (
+              <div className="mt-3 rounded-md border border-yellow-400/30 bg-yellow-400/5 px-2.5 py-1.5">
+                <div className="flex items-start gap-1.5 text-xs">
+                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-400 mt-0.5 shrink-0" />
+                  <span className="text-yellow-100/90">
+                    No playbook matched action{" "}
+                    <code className="font-mono bg-yellow-400/10 px-1 rounded">{decision.action}</code>
+                    {" — "}
+                    <a href="/dashboard/settings" className="underline">
+                      wire one up in Action Templates
+                    </a>
+                    .
+                  </span>
+                </div>
+              </div>
+            )}
+
             {expanded && (
-              <div className="mt-4 space-y-4 border-t border-border pt-4">
+              <div className="mt-3 space-y-3 border-t border-border pt-3">
                 {matchedTemplate && <TemplatePlaybookBlock template={matchedTemplate} />}
-
-                {!matchedTemplate && (
-                  <div className="rounded-lg border border-yellow-400/30 bg-yellow-400/5 p-3">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-                      <div className="text-xs">
-                        <div className="font-semibold text-yellow-200">
-                          No playbook matched action <code className="font-mono">{decision.action}</code>
-                        </div>
-                        <p className="text-yellow-100/80 mt-1">
-                          The executor needs an enabled action template with{" "}
-                          <code className="font-mono">action_key = &quot;{decision.action}&quot;</code> to
-                          dispatch steps (e.g. post to Slack, open a ticket). Add one in{" "}
-                          <a href="/dashboard/settings" className="underline">Settings → Action Templates</a>.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {decision.reasoning && (
-                  <div>
-                    <h4 className="text-sm font-semibold flex items-center gap-1 mb-2">
-                      <FileText className="h-3.5 w-3.5" /> Agent Reasoning
-                    </h4>
-                    <ReasoningPanel reasoning={decision.reasoning} />
-                  </div>
-                )}
 
                 {decision.guardrail_checks && Object.keys(decision.guardrail_checks).length > 0 && (
                   <div>
-                    <h4 className="text-sm font-semibold flex items-center gap-1 mb-1">
-                      <Shield className="h-3.5 w-3.5" /> Guardrail Analysis
+                    <h4 className="text-xs font-semibold flex items-center gap-1 mb-1 text-muted-foreground uppercase tracking-wide">
+                      <Shield className="h-3 w-3" /> Guardrail Analysis
                     </h4>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {Object.entries(decision.guardrail_checks).map(([key, val]) => (
-                        <div key={key} className="p-2 rounded border border-border text-xs">
-                          <span className="text-muted-foreground">{key.replace(/_/g, " ")}:</span>{" "}
-                          <span className="font-medium">{String(val)}</span>
+                        <div
+                          key={key}
+                          className="px-2 py-1 rounded border border-border bg-muted/30 text-[11px] inline-flex items-center gap-1.5"
+                        >
+                          <span className="text-muted-foreground">{key.replace(/_/g, " ")}:</span>
+                          <span className="font-semibold">{String(val)}</span>
                         </div>
                       ))}
                     </div>
@@ -867,7 +919,7 @@ function DecisionCard({
                 )}
 
                 {decision.executed_at && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     Executed: {new Date(decision.executed_at).toLocaleString()}
                   </p>
                 )}
