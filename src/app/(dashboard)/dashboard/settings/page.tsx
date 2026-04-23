@@ -21,6 +21,7 @@ import {
   updateTemplate,
   deleteTemplate,
   resetTemplates,
+  seedMissingDefaults,
 } from "@/lib/action-templates";
 import {
   type IntegrationConnection,
@@ -1241,6 +1242,14 @@ export default function SettingsPage() {
     }
   }
 
+  async function seedMissingTemplates() {
+    try {
+      setTemplatesState(await seedMissingDefaults(COMPANY_ID));
+    } catch (err) {
+      console.error("Failed to seed missing templates:", err);
+    }
+  }
+
   async function loadSettings() {
     try {
       const data = await api.companies(COMPANY_ID).settings.get();
@@ -1298,6 +1307,9 @@ export default function SettingsPage() {
           {tab === "templates" ? (
             <>
               <span className="text-xs text-muted-foreground">Templates auto-save</span>
+              <Button variant="outline" size="sm" onClick={seedMissingTemplates}>
+                <Plus className="h-3.5 w-3.5" /> Seed Missing Defaults
+              </Button>
               <Button variant="outline" size="sm" onClick={resetTemplatesToDefaults}>
                 <RotateCcw className="h-3.5 w-3.5" /> Reset Templates
               </Button>

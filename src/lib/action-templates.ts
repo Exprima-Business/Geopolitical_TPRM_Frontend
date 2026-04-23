@@ -54,11 +54,21 @@ export const TEMPLATE_ICONS: Record<string, LucideIcon> = {
 };
 
 /**
- * Seed templates used to populate a new company. Kept in sync with the
- * initial action recommendations the agent can emit. Steps default to empty —
- * customers bind them to their configured integrations in the UI.
+ * Default seed templates — canonical list kept in sync with the agent's tool
+ * catalog at apps/api/app/agents/tools.py. Every action_key below corresponds
+ * to an `action` value the agent can write to agent_decisions.action:
+ *
+ *   - propose_mitigation → increase_monitoring | notify_vendor | activate_backup
+ *                        | reroute | failover
+ *   - send_alert        → send_alert_email | send_alert_webhook | send_alert_in_app
+ *   - escalate_to_human → escalate_to_human
+ *   - assess_risk       → assess_risk_for_asset
+ *
+ * Steps default to empty — customers bind them to their configured integrations
+ * in the UI (Settings → Action Templates → expand step).
  */
 export const DEFAULT_TEMPLATES: ActionTemplate[] = [
+  /* ── Mitigation actions (from handle_propose_mitigation) ───────────── */
   {
     action_key: "increase_monitoring",
     name: "Increase Monitoring",
@@ -143,6 +153,56 @@ export const DEFAULT_TEMPLATES: ActionTemplate[] = [
     is_custom: false,
     steps: [],
   },
+
+  /* ── Alert actions (from handle_send_alert — channel becomes suffix) ── */
+  {
+    action_key: "send_alert_email",
+    name: "Email Alert",
+    description: "Send an alert email to stakeholders via SendGrid or an SMTP relay.",
+    severity_min: 3,
+    severity_max: 10,
+    estimated_duration: "< 1 min",
+    required_roles: ["On-Call"],
+    risks: [
+      "Email may be missed if recipient is offline",
+      "Spam filters may delay delivery",
+    ],
+    is_enabled: true,
+    is_custom: false,
+    steps: [],
+  },
+  {
+    action_key: "send_alert_webhook",
+    name: "Webhook Alert",
+    description: "POST an alert payload to a configured webhook (Slack, Microsoft Teams, custom receiver).",
+    severity_min: 3,
+    severity_max: 10,
+    estimated_duration: "< 1 min",
+    required_roles: [],
+    risks: [
+      "Downstream webhook may be rate-limited or offline",
+    ],
+    is_enabled: true,
+    is_custom: false,
+    steps: [],
+  },
+  {
+    action_key: "send_alert_in_app",
+    name: "In-App Alert",
+    description: "Record an in-app notification visible on the dashboard notification center.",
+    severity_min: 1,
+    severity_max: 10,
+    estimated_duration: "< 1 min",
+    required_roles: [],
+    risks: [
+      "Notification fatigue if severity threshold is too low",
+    ],
+    is_enabled: true,
+    is_custom: false,
+    steps: [],
+  },
+
+  /* ── Escalation (from handle_escalate) ────────────────────────────── */
   {
     action_key: "escalate_to_human",
     name: "Escalate to Human Review",
@@ -155,6 +215,22 @@ export const DEFAULT_TEMPLATES: ActionTemplate[] = [
       "Delay while awaiting human response",
       "Approver may lack context the agent already has",
     ],
+    is_enabled: true,
+    is_custom: false,
+    steps: [],
+  },
+
+  /* ── Assessment (from handle_assess_risk) ─────────────────────────── */
+  {
+    action_key: "assess_risk_for_asset",
+    name: "Risk Assessment Logged",
+    description:
+      "Record that the agent performed a per-asset risk assessment. Typically informational — no external action required, but you can wire notifications here if you want an audit trail.",
+    severity_min: 1,
+    severity_max: 10,
+    estimated_duration: "< 1 min",
+    required_roles: [],
+    risks: [],
     is_enabled: true,
     is_custom: false,
     steps: [],
@@ -226,6 +302,25 @@ export async function resetTemplates(companyId: string): Promise<ActionTemplate[
     }
   }
   return created;
+}
+
+/**
+ * Insert any DEFAULT_TEMPLATES whose action_key is missing from the stored set.
+ * Non-destructive: existing templates (including customized defaults) are left
+ * untouched. Returns the new full list.
+ */
+export async function seedMissingDefaults(companyId: string): Promise<ActionTemplate[]> {
+  const existing = await loadTemplates(companyId);
+  const existingKeys = new Set(existing.map((t) => t.action_key));
+  const toCreate = DEFAULT_TEMPLATES.filter((d) => !existingKeys.has(d.action_key));
+  for (const tpl of toCreate) {
+    try {
+      await createTemplate(companyId, tpl);
+    } catch (err) {
+      console.error(`Failed to seed default template ${tpl.action_key}:`, err);
+    }
+  }
+  return await loadTemplates(companyId);
 }
 
 export function findTemplateForAction(
