@@ -185,6 +185,59 @@ function ReasoningBox({
   );
 }
 
+/**
+ * Severity number → pill matching the same color scale as parsed risk-level
+ * sections. Expects 0–10. "Severity 7.4 / 10" format with a tiny meter bar.
+ */
+function EventSeverityPill({ severity }: { severity: number }) {
+  const level =
+    severity >= 8 ? "critical" :
+    severity >= 6 ? "high" :
+    severity >= 4 ? "medium" : "low";
+  const style = riskLevelStyle(level) ?? {
+    bg: "bg-muted/40",
+    text: "text-muted-foreground",
+    border: "border-border",
+  };
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${style.bg} ${style.border}`}
+    >
+      <Gauge className={`h-3.5 w-3.5 shrink-0 ${style.text}`} />
+      <div className="leading-tight">
+        <div className={`text-[9px] uppercase tracking-wide font-semibold ${style.text}`}>
+          Event Severity
+        </div>
+        <div className={`text-sm font-bold ${style.text}`}>
+          {severity.toFixed(1)} / 10
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventContextBadge({
+  title, region, country_code, started_at,
+}: {
+  title?: string | null;
+  region?: string | null;
+  country_code?: string | null;
+  started_at?: string | null;
+}) {
+  const location = [region, country_code].filter(Boolean).join(", ");
+  const started = started_at ? new Date(started_at).toLocaleString() : null;
+  return (
+    <div className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+      <Info className="h-3 w-3 mt-0.5 shrink-0" />
+      <div className="min-w-0">
+        {title && <span className="text-foreground/90 font-medium">{title}</span>}
+        {location && <span> · {location}</span>}
+        {started && <span> · started {started}</span>}
+      </div>
+    </div>
+  );
+}
+
 function CompactReasoning({
   reasoning,
   expanded,
@@ -197,9 +250,7 @@ function CompactReasoning({
   if (parsed.sections.length === 0) {
     return (
       <p
-        className={`text-sm text-muted-foreground mt-2 ${
-          expanded ? "" : "line-clamp-2"
-        }`}
+        className={`text-sm text-muted-foreground ${expanded ? "" : "line-clamp-2"}`}
       >
         {renderInline(parsed.remainder)}
       </p>
@@ -218,7 +269,7 @@ function CompactReasoning({
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-start gap-2">
+    <div className="flex flex-wrap items-start gap-2">
       {pills.map((sec, i) => (
         <ReasoningPill key={`p-${i}`} section={sec} />
       ))}
@@ -295,6 +346,14 @@ interface AgentDecision {
   result: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+  // Joined from risk_events server-side so the UI can show severity / location
+  // without a second round-trip.
+  event_title?: string | null;
+  event_severity?: number | null;
+  event_category?: string | null;
+  event_country_code?: string | null;
+  event_region?: string | null;
+  event_started_at?: string | null;
 }
 
 /* ── Constants ──────────────────────────────────────────── */
@@ -660,6 +719,92 @@ function TemplatePlaybookBlock({ template }: { template: ActionTemplate }) {
   );
 }
 
+/* ── Guardrail checks (why this was classified) ─────────── */
+
+/**
+ * Render the `guardrail_checks` JSON in a structured way so the user can
+ * see exactly which threshold drove the decision. The backend writes:
+ *   {
+ *     severity, asset_count, proximity_radius_km, model_used,
+ *     thresholds: { approve_min, escalate_min, ... },
+ *     threshold_applied: "escalate_min_severity" | ...,
+ *     source: "auto_triage" | ...,
+ *     ...
+ *   }
+ * We pick out the most important keys and present them as badges with a
+ * human-readable explanation line up top.
+ */
+function GuardrailChecksPanel({
+  checks,
+  severity,
+}: {
+  checks: Record<string, unknown>;
+  severity: number | null;
+}) {
+  const thresholds = (checks.thresholds ?? {}) as Record<string, number>;
+  const thresholdApplied = checks.threshold_applied as string | undefined;
+  const proximityRadius = checks.proximity_radius_km as number | undefined;
+  const modelUsed = checks.model_used as string | undefined;
+  const assetCount = checks.asset_count as number | undefined;
+  const source = checks.source as string | undefined;
+
+  // Build a one-liner: which rule fired?
+  let explanation: string | null = null;
+  if (thresholdApplied && severity != null) {
+    if (thresholdApplied === "escalate_min_severity" && thresholds.escalate_min != null) {
+      explanation = `Severity ${severity.toFixed(1)} ≥ ${thresholds.escalate_min.toFixed(1)} escalation threshold → escalated`;
+    } else if (thresholdApplied === "require_approval_min_severity" && thresholds.approve_min != null) {
+      explanation = `Severity ${severity.toFixed(1)} ≥ ${thresholds.approve_min.toFixed(1)} approval threshold → pending approval`;
+    } else if (thresholdApplied === "below_approval_threshold" && thresholds.approve_min != null) {
+      explanation = `Severity ${severity.toFixed(1)} < ${thresholds.approve_min.toFixed(1)} approval threshold → auto-approved`;
+    } else if (thresholdApplied === "proximity_proximity" && assetCount != null) {
+      explanation = `${assetCount} asset(s) within proximity radius → escalated for review`;
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {explanation && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs text-foreground/90">
+          {explanation}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1.5 text-[11px]">
+        {severity != null && (
+          <GuardrailPill label="Severity" value={severity.toFixed(1)} />
+        )}
+        {thresholds.approve_min != null && (
+          <GuardrailPill label="Approve ≥" value={thresholds.approve_min.toFixed(1)} />
+        )}
+        {thresholds.escalate_min != null && (
+          <GuardrailPill label="Escalate ≥" value={thresholds.escalate_min.toFixed(1)} />
+        )}
+        {proximityRadius != null && (
+          <GuardrailPill label="Proximity radius" value={`${proximityRadius} km`} />
+        )}
+        {assetCount != null && (
+          <GuardrailPill label="Assets in radius" value={String(assetCount)} />
+        )}
+        {modelUsed && (
+          <GuardrailPill label="Model" value={modelUsed.replace("claude-", "").replace(/-\d{8}$/, "")} />
+        )}
+        {source && (
+          <GuardrailPill label="Source" value={source} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GuardrailPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-2 py-1 rounded border border-border bg-muted/30 inline-flex items-center gap-1.5">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-mono font-semibold">{value}</span>
+    </div>
+  );
+}
+
 /* ── Action executions audit log ────────────────────────── */
 
 interface ActionExecution {
@@ -851,7 +996,7 @@ function DecisionCard({
               </button>
             </div>
 
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground flex-wrap">
               <span className={typeInfo.color}>{typeInfo.label}</span>
               {decision.confidence != null && (
                 <span>Confidence: {Math.round(decision.confidence * 100)}%</span>
@@ -859,10 +1004,27 @@ function DecisionCard({
               <span><Clock className="h-3 w-3 inline mr-1" />{new Date(decision.created_at).toLocaleString()}</span>
             </div>
 
-            {/* Always-visible compact reasoning — pills + constrained box */}
-            {decision.reasoning && (
-              <CompactReasoning reasoning={decision.reasoning} expanded={expanded} />
+            {/* Event context — title / location / when */}
+            {(decision.event_title || decision.event_region) && (
+              <EventContextBadge
+                title={decision.event_title}
+                region={decision.event_region}
+                country_code={decision.event_country_code}
+                started_at={decision.event_started_at}
+              />
             )}
+
+            {/* Always-visible compact reasoning: severity pill + parsed sections */}
+            <div className="mt-3 flex flex-wrap items-start gap-2">
+              {decision.event_severity != null && (
+                <EventSeverityPill severity={decision.event_severity} />
+              )}
+              {decision.reasoning && (
+                <div className="flex-1 min-w-[240px]">
+                  <CompactReasoning reasoning={decision.reasoning} expanded={expanded} />
+                </div>
+              )}
+            </div>
 
             {/* Always-visible "no playbook matched" banner (audit-critical) */}
             {!matchedTemplate && (
@@ -889,19 +1051,9 @@ function DecisionCard({
                 {decision.guardrail_checks && Object.keys(decision.guardrail_checks).length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold flex items-center gap-1 mb-1 text-muted-foreground uppercase tracking-wide">
-                      <Shield className="h-3 w-3" /> Guardrail Analysis
+                      <Shield className="h-3 w-3" /> Why this was classified
                     </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {Object.entries(decision.guardrail_checks).map(([key, val]) => (
-                        <div
-                          key={key}
-                          className="px-2 py-1 rounded border border-border bg-muted/30 text-[11px] inline-flex items-center gap-1.5"
-                        >
-                          <span className="text-muted-foreground">{key.replace(/_/g, " ")}:</span>
-                          <span className="font-semibold">{String(val)}</span>
-                        </div>
-                      ))}
-                    </div>
+                    <GuardrailChecksPanel checks={decision.guardrail_checks} severity={decision.event_severity ?? null} />
                   </div>
                 )}
 
