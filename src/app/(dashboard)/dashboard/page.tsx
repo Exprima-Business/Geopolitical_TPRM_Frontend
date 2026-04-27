@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { RiskMap } from "@/components/maps/risk-map";
+import { TimelineControl } from "@/components/maps/timeline-control";
 import { EventDetailPanel } from "@/components/events/event-detail-panel";
 import { AssetDetailPanel } from "@/components/events/asset-detail-panel";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -9,10 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useCompany } from "@/lib/company-context";
-import { useMapStore } from "@/stores/map-store";
+import { useMapStore, TIME_RANGE_PRESETS } from "@/stores/map-store";
 import { getSeverityLevel, getSeverityLabel, formatEventTitle } from "@/lib/risk-utils";
 import type { RiskEvent, Asset } from "@/types";
 import { AlertTriangle, MapPin, Shield, Bot, X, Globe, Map as MapIcon, Waves, GitBranch } from "lucide-react";
+
+const VALID_RANGE_VALUES = new Set(
+  TIME_RANGE_PRESETS.map((p) => p.value).filter((v): v is number => v !== null)
+);
 
 const SEVERITY_LEVELS = ["critical", "high", "medium", "low"] as const;
 const EVENT_CATEGORIES = [
@@ -98,8 +104,48 @@ export default function DashboardPage() {
     selectedEventId, setSelectedEventId,
     severityFilter, toggleSeverity,
     eventTypeFilter, toggleEventType,
+    timeRangeHours, setTimeRangeHours,
     clearFilters,
   } = useMapStore();
+
+  // --- URL <-> store sync for time range ---
+  // Store is source of truth; URL mirrors it for shareable/refresh-safe state.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const didHydrateFromUrl = useRef(false);
+
+  // On mount: read ?range=X once and apply to store if present & valid.
+  useEffect(() => {
+    if (didHydrateFromUrl.current) return;
+    didHydrateFromUrl.current = true;
+    const raw = searchParams?.get("range");
+    if (raw === null || raw === undefined) return;
+    if (raw === "all") {
+      setTimeRangeHours(null);
+      return;
+    }
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && VALID_RANGE_VALUES.has(parsed)) {
+      setTimeRangeHours(parsed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the store's timeRangeHours changes (after initial hydration), push to URL.
+  useEffect(() => {
+    if (!didHydrateFromUrl.current) return;
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (timeRangeHours === null) {
+      params.delete("range");
+    } else {
+      params.set("range", String(timeRangeHours));
+    }
+    const qs = params.toString();
+    const nextUrl = qs ? `${pathname}?${qs}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRangeHours]);
 
   useEffect(() => {
     const company = api.companies(companyId);

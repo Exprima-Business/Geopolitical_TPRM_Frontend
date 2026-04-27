@@ -11,6 +11,16 @@ interface ViewState {
 
 type MapViewMode = "flat" | "globe";
 
+// Sensible presets (hours): 6h, 1d, 3d, 1w, 30d, all
+export const TIME_RANGE_PRESETS: { value: number | null; label: string }[] = [
+  { value: 6, label: "6h" },
+  { value: 24, label: "1d" },
+  { value: 72, label: "3d" },
+  { value: 168, label: "1w" },
+  { value: 720, label: "30d" },
+  { value: null, label: "All" },
+];
+
 interface MapStore {
   viewState: ViewState;
   setViewState: (viewState: ViewState) => void;
@@ -32,6 +42,9 @@ interface MapStore {
   eventTypeFilter: string[];
   setEventTypeFilter: (filters: string[]) => void;
   toggleEventType: (type: string) => void;
+  // Time-range filter: null = all time, otherwise hours back from now
+  timeRangeHours: number | null;
+  setTimeRangeHours: (hours: number | null) => void;
   clearFilters: () => void;
 }
 
@@ -78,7 +91,9 @@ export const useMapStore = create<MapStore>()(
             : [...current, type],
         });
       },
-      clearFilters: () => set({ severityFilter: [], eventTypeFilter: [] }),
+      timeRangeHours: null,
+      setTimeRangeHours: (hours) => set({ timeRangeHours: hours }),
+      clearFilters: () => set({ severityFilter: [], eventTypeFilter: [], timeRangeHours: null }),
     }),
     {
       name: "map-preferences",
@@ -90,6 +105,7 @@ export const useMapStore = create<MapStore>()(
         showHeatmap: state.showHeatmap,
         showSupplyChain: state.showSupplyChain,
         proximityRadiusKm: state.proximityRadiusKm,
+        timeRangeHours: state.timeRangeHours,
       }),
     }
   )

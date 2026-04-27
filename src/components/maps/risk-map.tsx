@@ -63,7 +63,7 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
     viewMode,
     showArcs, showHeatmap, showSupplyChain, proximityRadiusKm,
     selectedEventId, setSelectedEventId,
-    severityFilter, eventTypeFilter,
+    severityFilter, eventTypeFilter, timeRangeHours,
   } = useMapStore();
 
   const [events, setEvents] = useState<RiskEvent[]>([]);
@@ -109,14 +109,20 @@ export function RiskMap({ onAssetClick }: { onAssetClick?: (asset: Asset) => voi
     return result;
   }, [assets]);
 
-  // Apply severity/type filters
+  // Apply severity/type/time-range filters
   const filteredEvents = useMemo(() => {
+    const cutoffMs = timeRangeHours !== null ? Date.now() - timeRangeHours * 3600_000 : null;
     return mappedEvents.filter((e) => {
       if (severityFilter.length > 0 && !severityFilter.includes(getSeverityLevel(e.severity))) return false;
       if (eventTypeFilter.length > 0 && !eventTypeFilter.includes(e.category)) return false;
+      if (cutoffMs !== null) {
+        if (!e.started_at) return false;
+        const t = new Date(e.started_at).getTime();
+        if (Number.isNaN(t) || t < cutoffMs) return false;
+      }
       return true;
     });
-  }, [mappedEvents, severityFilter, eventTypeFilter]);
+  }, [mappedEvents, severityFilter, eventTypeFilter, timeRangeHours]);
 
   // Compute proximity arcs: event → nearby asset
   const proximityArcs = useMemo(() => {
