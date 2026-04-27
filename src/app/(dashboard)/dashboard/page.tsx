@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { RiskMap } from "@/components/maps/risk-map";
 import { TimelineControl } from "@/components/maps/timeline-control";
@@ -95,7 +95,27 @@ function MapControls() {
   );
 }
 
+// Next.js 16 requires useSearchParams() callers to be wrapped in <Suspense>
+// during static prerender. The default export is a thin wrapper; the real
+// content lives in DashboardPageContent.
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardFallback />}>
+      <DashboardPageContent />
+    </Suspense>
+  );
+}
+
+function DashboardFallback() {
+  return (
+    <div className="p-6 space-y-4">
+      <div className="h-8 w-48 bg-muted/50 rounded animate-pulse" />
+      <div className="h-[600px] bg-muted/30 rounded animate-pulse" />
+    </div>
+  );
+}
+
+function DashboardPageContent() {
   const { companyId } = useCompany();
   const [stats, setStats] = useState<Stats>({ riskEvents: 0, assets: 0, pendingDecisions: 0, mitigations: 0 });
   const [allEvents, setAllEvents] = useState<RiskEvent[]>([]);
