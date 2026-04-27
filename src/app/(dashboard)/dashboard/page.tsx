@@ -277,6 +277,11 @@ function DashboardPageContent() {
         )}
       </div>
 
+      {/* Time range — pill presets + 30-bucket histogram */}
+      <div className="px-6 pt-3">
+        <TimelineControl events={allEvents} />
+      </div>
+
       {/* Map + sidebar */}
       <div className="flex flex-1 gap-4 p-6 min-h-0 overflow-hidden">
         <div className="flex-1 min-w-0 rounded-xl overflow-hidden border border-border relative">
