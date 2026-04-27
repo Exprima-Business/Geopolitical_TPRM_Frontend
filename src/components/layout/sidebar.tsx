@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { useFlag } from "@/lib/feature-flag-context";
 import {
   LayoutDashboard,
   MapPin,
@@ -38,6 +39,7 @@ const navItems = [
     label: "Third Parties",
     icon: Briefcase,
     tooltip: "Vendor catalog — suppliers, SaaS providers, and downstream dependencies with security scores.",
+    flag: "third_party_view_enabled" as const,
   },
   {
     href: "/dashboard/risks",
@@ -89,6 +91,7 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const thirdPartyEnabled = useFlag("third_party_view_enabled");
 
   async function handleLogout() {
     const supabase = createClient();
@@ -96,6 +99,14 @@ export function Sidebar() {
     router.push("/login");
     router.refresh();
   }
+
+  // Hide flag-gated nav items when their flag is off. Today only Third
+  // Parties is gated; future gating can use the same `flag` field.
+  const visibleNavItems = navItems.filter((item) => {
+    if (!("flag" in item) || !item.flag) return true;
+    if (item.flag === "third_party_view_enabled") return thirdPartyEnabled;
+    return true;
+  });
 
   return (
     <aside className="flex flex-col w-64 border-r border-border bg-card h-screen sticky top-0">
@@ -107,7 +118,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = item.exact
             ? pathname === item.href
             : pathname === item.href || pathname.startsWith(item.href + "/");
