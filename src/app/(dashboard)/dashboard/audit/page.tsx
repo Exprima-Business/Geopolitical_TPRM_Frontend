@@ -12,7 +12,7 @@
  * bookmark a specific review slice.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,7 +88,27 @@ function draftFromSearchParams(sp: URLSearchParams): FilterDraft {
   };
 }
 
+// Next.js 16 requires useSearchParams() callers to be wrapped in <Suspense>
+// during static prerender. The default export is a thin wrapper; the real
+// content lives in AuditLogPageContent.
 export default function AuditLogPage() {
+  return (
+    <Suspense fallback={<AuditLogFallback />}>
+      <AuditLogPageContent />
+    </Suspense>
+  );
+}
+
+function AuditLogFallback() {
+  return (
+    <div className="p-6">
+      <div className="h-8 w-48 bg-muted/50 rounded animate-pulse mb-6" />
+      <div className="h-64 bg-muted/30 rounded animate-pulse" />
+    </div>
+  );
+}
+
+function AuditLogPageContent() {
   const { companyId } = useCompany();
   const router = useRouter();
   const searchParams = useSearchParams();
